@@ -88,7 +88,7 @@ for query in QUERIES:
 all_links = list(dict.fromkeys(all_links))
 print(f"\n🎉 搜集完成！共获得 {len(all_links)} 条独特订阅链接")
 
-with open("daily_free_nodes.txt", "w", encoding="utf-8") as f:
+with open("da_fr_no.txt", "w", encoding="utf-8") as f:
     f.write("\n".join(all_links))
 
-print("✅ 已保存到 daily_free_nodes.txt")
+print("✅ 已保存到 da_fre_no.txt")
