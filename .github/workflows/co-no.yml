@@ -22,6 +22,9 @@ jobs:
         with:
           python-version: '3.12'
 
+      - name: 安装依赖（requests库）
+        run: pip install requests
+
       - name: 运行动态搜索脚本
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
