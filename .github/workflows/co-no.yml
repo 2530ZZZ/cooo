@@ -2,14 +2,14 @@ name: 每小时动态搜集免费节点
 
 on:
   schedule:
-    - cron: '0 * * * *'      # 每小时整点运行（北京时间每小时 00 分）
-  workflow_dispatch:         # 允许手动立即运行
+    - cron: '0 * * * *'      # 每小时整点运行（北京时间每小时00分）
+  workflow_dispatch:         # 允许手动运行
 
 jobs:
   collect:
     runs-on: ubuntu-latest
 
-    # 强制使用 Node.js 24（解决弃用警告）
+    # 强制使用 Node.js 24（解决警告的核心）
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
@@ -25,9 +25,9 @@ jobs:
       - name: 运行动态搜索脚本
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: python collect_nodes.py
+        run: python co_no.py
 
-      - name: 提交更新后的 daily_free_nodes.txt
+      - name: 提交更新后的 da_fr_no.txt
         run: |
           git config --global user.name "GitHub Actions"
           git config --global user.email "actions@github.com"
