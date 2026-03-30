@@ -2,18 +2,22 @@ name: 每小时动态搜集免费节点
 
 on:
   schedule:
-    - cron: '0 * * * *'      # 每小时整点运行（北京时间每小时00分）
-  workflow_dispatch:         # 允许手动立即运行
+    - cron: '0 * * * *'      # 每小时整点运行（北京时间每小时 00 分）
+  workflow_dispatch:         # 允许手动点击立即运行
 
 jobs:
   collect:
     runs-on: ubuntu-latest
 
+    # ←←← 新增这部分，强制使用 Node.js 24
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
     steps:
       - name: 拉取仓库代码
         uses: actions/checkout@v4
 
-      - name: 设置 Python
+      - name: 设置 Python 环境
         uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -21,12 +25,12 @@ jobs:
       - name: 运行动态搜索脚本
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: python co_no.py
+        run: python collect_nodes.py
 
-      - name: 提交更新
+      - name: 提交更新后的 daily_free_nodes.txt
         run: |
           git config --global user.name "GitHub Actions"
           git config --global user.email "actions@github.com"
-          git add da_fr_no.txt
+          git add daily_free_nodes.txt
           git commit -m "自动更新节点列表 - $(date +'%Y-%m-%d %H:%M:%S UTC')" || echo "No changes"
           git push
