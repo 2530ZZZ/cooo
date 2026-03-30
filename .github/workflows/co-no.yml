@@ -62,8 +62,8 @@ jobs:
       - name: 提交更新后的 da_fr_no.txt
         run: |
           # 配置 git 提交用户信息
-          git config --global user.name "GitHub Actions"
-          git config --global user.email "actions@github.com"
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
           
           # 添加文件
           git add da_fr_no.txt
