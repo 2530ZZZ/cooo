@@ -26,6 +26,11 @@ jobs:
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
+    # 关键：声明需要写权限
+    permissions:
+      contents: write     # 允许推送代码
+      actions: read
+
     # ==================== 执行步骤（按顺序执行） ====================
     steps:
       # 步骤1：拉取仓库代码
