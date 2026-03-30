@@ -3,13 +3,13 @@ name: 每小时动态搜集免费节点
 on:
   schedule:
     - cron: '0 * * * *'      # 每小时整点运行（北京时间每小时 00 分）
-  workflow_dispatch:         # 允许手动点击立即运行
+  workflow_dispatch:         # 允许手动立即运行
 
 jobs:
   collect:
     runs-on: ubuntu-latest
 
-    # ←←← 新增这部分，强制使用 Node.js 24
+    # 强制使用 Node.js 24（解决弃用警告）
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
