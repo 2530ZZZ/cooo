@@ -1,39 +1,70 @@
-name: 每小时动态搜集免费节点
+# ==================== 工作流名称 ====================
+# 这个名称会显示在 GitHub Actions 页面中
+name: 每6小时动态搜集免费节点
 
+# ==================== 触发条件 ====================
 on:
+  # 定时触发：每6小时运行一次
+  # cron 语法格式：分 时 日 月 周
+  # '0 */6 * * *' 表示每6小时的整点运行（北京时间 00:00、06:00、12:00、18:00）
   schedule:
-    - cron: '0 * * * *'      # 每小时整点运行（北京时间每小时00分）
-  workflow_dispatch:         # 允许手动运行
+    - cron: '0 */6 * * *'
 
+  # 允许手动触发：可以在 GitHub Actions 页面点击 "Run workflow" 立即运行
+  workflow_dispatch:
+
+# ==================== 任务定义 ====================
 jobs:
+  # 任务名称（可以自定义）
   collect:
+    # 运行环境：使用最新的 Ubuntu 系统
     runs-on: ubuntu-latest
 
-    # 强制使用 Node.js 24（解决警告的核心）
+    # ==================== 环境变量 ====================
+    # FORCE_JAVASCRIPT_ACTIONS_TO_NODE24=true
+    # 强制 GitHub Actions 使用 Node.js 24，解决 Node.js 20 已弃用警告
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
+    # ==================== 执行步骤（按顺序执行） ====================
     steps:
+      # 步骤1：拉取仓库代码
       - name: 拉取仓库代码
         uses: actions/checkout@v4
+        # 使用官方 checkout action 的最新 v4 版本
 
+      # 步骤2：设置 Python 环境
       - name: 设置 Python 环境
         uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: '3.12'     # 指定使用 Python 3.12
 
-      - name: 安装依赖（requests库）
+      # 步骤3：安装 Python 依赖
+      - name: 安装依赖（requests 库）
         run: pip install requests
+        # 安装 collect_nodes.py 脚本需要的 requests 库
 
+      # 步骤4：执行我们的搜集脚本
       - name: 运行动态搜索脚本
         env:
+          # 将 GitHub 自动提供的仓库令牌传递给脚本
+          # 让脚本可以使用已认证的 GitHub API（更高的速率限制）
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: python co_no.py
+        # 执行我们编写的 collect_nodes.py 脚本
 
+      # 步骤5：将生成的文件提交回仓库
       - name: 提交更新后的 da_fr_no.txt
         run: |
+          # 配置 git 提交用户信息
           git config --global user.name "GitHub Actions"
           git config --global user.email "actions@github.com"
+          
+          # 添加文件
           git add da_fr_no.txt
-          git commit -m "自动更新节点列表 - $(date +'%Y-%m-%d %H:%M:%S UTC')" || echo "No changes"
+          
+          # 提交（如果文件没有变化则不提交）
+          git commit -m "自动更新节点列表 - $(date +'%Y-%m-%d %H:%M:%S UTC')" || echo "No changes to commit"
+          
+          # 推送到仓库
           git push
