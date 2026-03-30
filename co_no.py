@@ -31,7 +31,7 @@ QUERIES = [
 ]
 
 all_links = []
-seen_repos = set()
+seen_repos = set()       # ← 新增：用于智能跳过已检查过的仓库
 
 print(f"🚀 {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} 开始动态搜索...")
 
@@ -48,6 +48,7 @@ for query in QUERIES:
 
         for item in items:
             repo = item["full_name"]
+            # ←←← 智能跳过：同一个仓库只检查一次
             if repo in seen_repos:
                 continue
             seen_repos.add(repo)
@@ -85,7 +86,7 @@ for query in QUERIES:
         page += 1
         time.sleep(0.4)
 
-all_links = list(dict.fromkeys(all_links))
+all_links = list(dict.fromkeys(all_links))        # 全局去重
 print(f"\n🎉 搜集完成！共获得 {len(all_links)} 条独特订阅链接")
 
 with open("da_fr_no.txt", "w", encoding="utf-8") as f:
