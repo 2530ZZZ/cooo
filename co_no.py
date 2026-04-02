@@ -192,4 +192,4 @@ print(f"   最终获得独特订阅链接: {len(all_links)} 条")
 with open("da_fr_no.txt", "w", encoding="utf-8") as f:
     f.write("\n".join(all_links))
 
-print(f"[{datetime.now().strftime('%H:%M:%S')}] ✅ 已保存到 daily_free_nodes.txt 文件")
+print(f"[{datetime.now().strftime('%H:%M:%S')}] ✅ 已保存到 da_fr_no.txt 文件")
