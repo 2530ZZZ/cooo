@@ -99,74 +99,74 @@ for query_idx, query in enumerate(QUERIES, 1):
 
         # ==================== 处理搜索结果中的每个仓库 ====================
             for item in items:
-            repo = item["full_name"]   # 格式如: "Pawdroid/Free-servers"
+                repo = item["full_name"]   # 格式如: "Pawdroid/Free-servers"
 
-            # ==================== 智能跳过已检查仓库 ====================
-                if repo in seen_repos:
-                    continue               # 同一个仓库被多个关键词搜索到时，只处理一次
+                # ==================== 智能跳过已检查仓库 ====================
+                    if repo in seen_repos:
+                        continue               # 同一个仓库被多个关键词搜索到时，只处理一次
                     
-                seen_repos.add(repo)       # 标记为已检查
-                checked_count += 1
+                    seen_repos.add(repo)       # 标记为已检查
+                    checked_count += 1
 
-            # ==================== 验证仓库是否在过去24小时内有更新 ====================
-                # 检查仓库最新 commit
-                print(f"    [{datetime.now().strftime('%H:%M:%S')}]     检查仓库 ({checked_count}): {repo}")
+                # ==================== 验证仓库是否在过去24小时内有更新 ====================
+                    # 检查仓库最新 commit
+                    print(f"    [{datetime.now().strftime('%H:%M:%S')}]     检查仓库 ({checked_count}): {repo}")
                 
-                commit_url = f"https://api.github.com/repos/{repo}/commits?per_page=1"
-                c_resp = requests.get(commit_url, headers=headers, timeout=10)
+                    commit_url = f"https://api.github.com/repos/{repo}/commits?per_page=1"
+                    c_resp = requests.get(commit_url, headers=headers, timeout=10)
                 
-                if handle_rate_limit(c_resp, f"仓库 {repo} commit 查询"):
-                    continue
+                    if handle_rate_limit(c_resp, f"仓库 {repo} commit 查询"):
+                        continue
                     
-                if c_resp.status_code != 200:
-                    print(f"    [{datetime.now().strftime('%H:%M:%S')}]   仓库 ({checked_count}): {repo}   commit 查询失败，状态码: {c_resp.status_code}")
-                    continue
-
-                try:
-                    commit_time_str = c_resp.json()[0]["commit"]["committer"]["date"]
-                    commit_time = datetime.fromisoformat(commit_time_str.replace("Z", "+00:00"))
-                    
-                    if datetime.now(timezone.utc) - commit_time >= timedelta(hours=24):
-                        print(f"    [{datetime.now().strftime('%H:%M:%S')}]     仓库 ({checked_count}): {repo}   超过24小时未更新，跳过")
+                    if c_resp.status_code != 200:
+                        print(f"    [{datetime.now().strftime('%H:%M:%S')}]   仓库 ({checked_count}): {repo}   commit 查询失败，状态码: {c_resp.status_code}")
                         continue
 
-                    print(f"    ✓ 发现24h更新仓库 ({checked_count}): {repo}")
+                    try:
+                        commit_time_str = c_resp.json()[0]["commit"]["committer"]["date"]
+                        commit_time = datetime.fromisoformat(commit_time_str.replace("Z", "+00:00"))
+                    
+                        if datetime.now(timezone.utc) - commit_time >= timedelta(hours=24):
+                            print(f"    [{datetime.now().strftime('%H:%M:%S')}]     仓库 ({checked_count}): {repo}   超过24小时未更新，跳过")
+                            continue
+
+                        print(f"    ✓ 发现24h更新仓库 ({checked_count}): {repo}")
 
 
-                    # ==================== 提取订阅链接 ====================
+                        # ==================== 提取订阅链接 ====================
 
-                    # 方法1: 从 README.md 中提取所有 raw.githubusercontent.com 链接（最常用、最准确）
-                    readme_url = f"https://raw.githubusercontent.com/{repo}/main/README.md"
-                    r = requests.get(readme_url, headers=headers, timeout=10)
-                    if r.status_code == 200:
-                        extracted = re.findall(r'https?://raw\.githubusercontent\.com/[^"\s<>`\'\)]+', r.text)
-                        all_links.extend(extracted)
-                        query_links_count += len(extracted)
-                        print(f"     [{datetime.now().strftime('%H:%M:%S')}]      从 README 提取到 {len(extracted)} 条链接")
+                        # 方法1: 从 README.md 中提取所有 raw.githubusercontent.com 链接（最常用、最准确）
+                        readme_url = f"https://raw.githubusercontent.com/{repo}/main/README.md"
+                        r = requests.get(readme_url, headers=headers, timeout=10)
+                        if r.status_code == 200:
+                            extracted = re.findall(r'https?://raw\.githubusercontent\.com/[^"\s<>`\'\)]+', r.text)
+                            all_links.extend(extracted)
+                            query_links_count += len(extracted)
+                            print(f"     [{datetime.now().strftime('%H:%M:%S')}]      从 README 提取到 {len(extracted)} 条链接")
 
-                    # 方法2: 遍历仓库文件树，自动发现可能的订阅文件
-                    tree_url = f"https://api.github.com/repos/{repo}/git/trees/main?recursive=1"
-                    t_resp = requests.get(tree_url, headers=headers, timeout=10)
-                    if t_resp.status_code == 200:
-                        file_count = 0
-                        for file in t_resp.json().get("tree", []):
-                            if file["type"] == "blob":    # 是文件而不是目录
-                                fname = file["path"].lower()
-                                # 如果文件名包含常见关键词且是常见订阅格式
-                                if fname.endswith((".yaml", ".yml", ".txt", ".json", ".base64", ".list")) and \
-                                   any(k in fname for k in ["clash", "v2ray", "trojan", "hysteria", "vless", "vmess", "ss", "sub", "proxy", "node", "base64", "config", "list"]):
-                                    file_url = f"https://raw.githubusercontent.com/{repo}/main/{file['path']}"
-                                    all_links.append(file_url)
-                                    file_count += 1
-                        if file_count > 0:
-                            query_links_count += file_count
-                            print(f"      [{datetime.now().strftime('%H:%M:%S')}]       从文件树{fname}  提取到 {file_count} 条订阅文件")
-                # 单个仓库出错不影响整体运行
-                except Exception as e:
-                    print(f"      [{datetime.now().strftime('%H:%M:%S')}]       处理仓库 {repo} 时发生异常: {e}（已跳过）")
+                        # 方法2: 遍历仓库文件树，自动发现可能的订阅文件
+                        tree_url = f"https://api.github.com/repos/{repo}/git/trees/main?recursive=1"
+                        t_resp = requests.get(tree_url, headers=headers, timeout=10)
+                        if t_resp.status_code == 200:
+                            file_count = 0
+                            for file in t_resp.json().get("tree", []):
+                                if file["type"] == "blob":    # 是文件而不是目录
+                                    fname = file["path"].lower()
+                                    # 如果文件名包含常见关键词且是常见订阅格式
+                                    if fname.endswith((".yaml", ".yml", ".txt", ".json", ".base64", ".list")) and \
+                                    any(k in fname for k in ["clash", "v2ray", "trojan", "hysteria", "vless", "vmess", "ss", "sub", "proxy", "node", "base64", "config", "list"]):
+                                        file_url = f"https://raw.githubusercontent.com/{repo}/main/{file['path']}"
+                                        all_links.append(file_url)
+                                        file_count += 1
+                            if file_count > 0:
+                                query_links_count += file_count
+                                print(f"      [{datetime.now().strftime('%H:%M:%S')}]       从文件树{fname}  提取到 {file_count} 条订阅文件")
+                    # 单个仓库出错不影响整体运行
+                    except Exception as e:
+                        print(f"      [{datetime.now().strftime('%H:%M:%S')}]       处理仓库 {repo} 时发生异常: {e}（已跳过）")
 
-                # 每次处理完一个仓库后稍微等待，避免触发次要限流
-                time.sleep(0.25)
+                    # 每次处理完一个仓库后稍微等待，避免触发次要限流
+                    time.sleep(0.25)
 
         except Exception as e:
             print(f"  [{datetime.now().strftime('%H:%M:%S')}]   关键词 '{query}' 第{page}页发生异常: {e}")
