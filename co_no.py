@@ -72,20 +72,20 @@ print(f"🚀 {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} 开始动态搜索..
 
 for query_idx, query in enumerate(QUERIES, 1):
     print(f"[{query_idx}/{len(QUERIES)}] 搜索关键词: {query}")
-	# 当前关键词贡献的链接数量
+    # 当前关键词贡献的链接数量
     query_links_count = 0   
 
     page = 1
     while page <= 8:
-		print(f"  [{datetime.now().strftime('%H:%M:%S')}]   正在请求第 {page} 页...")
+        print(f"  [{datetime.now().strftime('%H:%M:%S')}]   正在请求第 {page} 页...")
         url = f"https://api.github.com/search/repositories?q={query}&sort=updated&order=desc&per_page=100&page={page}"
         
         try:
             resp = requests.get(url, headers=headers, timeout=15)
             
-			# 调用通用限流处理函数
+            # 调用通用限流处理函数
             if handle_rate_limit(resp, f"搜索关键词第{page}页"):
-				# 限流后重试当前页
+                # 限流后重试当前页
                 continue
                 
             if resp.status_code != 200:
@@ -94,7 +94,7 @@ for query_idx, query in enumerate(QUERIES, 1):
 
             items = resp.json().get("items", [])
             if not items:
-				print(f"  [{datetime.now().strftime('%H:%M:%S')}]   第{page}页没有结果，结束当前关键词搜索")
+                print(f"  [{datetime.now().strftime('%H:%M:%S')}]   第{page}页没有结果，结束当前关键词搜索")
                 break   
 
         # ==================== 处理搜索结果中的每个仓库 ====================
@@ -110,8 +110,8 @@ for query_idx, query in enumerate(QUERIES, 1):
 
             # ==================== 验证仓库是否在过去24小时内有更新 ====================
                 # 检查仓库最新 commit
-				print(f"    [{datetime.now().strftime('%H:%M:%S')}]     检查仓库 ({checked_count}): {repo}")
-				
+                print(f"    [{datetime.now().strftime('%H:%M:%S')}]     检查仓库 ({checked_count}): {repo}")
+                
                 commit_url = f"https://api.github.com/repos/{repo}/commits?per_page=1"
                 c_resp = requests.get(commit_url, headers=headers, timeout=10)
                 
@@ -119,7 +119,7 @@ for query_idx, query in enumerate(QUERIES, 1):
                     continue
                     
                 if c_resp.status_code != 200:
-					print(f"    [{datetime.now().strftime('%H:%M:%S')}]   仓库 ({checked_count}): {repo}   commit 查询失败，状态码: {c_resp.status_code}")
+                    print(f"    [{datetime.now().strftime('%H:%M:%S')}]   仓库 ({checked_count}): {repo}   commit 查询失败，状态码: {c_resp.status_code}")
                     continue
 
                 try:
@@ -127,7 +127,7 @@ for query_idx, query in enumerate(QUERIES, 1):
                     commit_time = datetime.fromisoformat(commit_time_str.replace("Z", "+00:00"))
                     
                     if datetime.now(timezone.utc) - commit_time >= timedelta(hours=24):
-						print(f"    [{datetime.now().strftime('%H:%M:%S')}]     仓库 ({checked_count}): {repo}   超过24小时未更新，跳过")
+                        print(f"    [{datetime.now().strftime('%H:%M:%S')}]     仓库 ({checked_count}): {repo}   超过24小时未更新，跳过")
                         continue
 
                     print(f"    ✓ 发现24h更新仓库 ({checked_count}): {repo}")
@@ -142,13 +142,13 @@ for query_idx, query in enumerate(QUERIES, 1):
                         extracted = re.findall(r'https?://raw\.githubusercontent\.com/[^"\s<>`\'\)]+', r.text)
                         all_links.extend(extracted)
                         query_links_count += len(extracted)
-						print(f"     [{datetime.now().strftime('%H:%M:%S')}]      从 README 提取到 {len(extracted)} 条链接")
+                        print(f"     [{datetime.now().strftime('%H:%M:%S')}]      从 README 提取到 {len(extracted)} 条链接")
 
                     # 方法2: 遍历仓库文件树，自动发现可能的订阅文件
                     tree_url = f"https://api.github.com/repos/{repo}/git/trees/main?recursive=1"
                     t_resp = requests.get(tree_url, headers=headers, timeout=10)
                     if t_resp.status_code == 200:
-						file_count = 0
+                        file_count = 0
                         for file in t_resp.json().get("tree", []):
                             if file["type"] == "blob":    # 是文件而不是目录
                                 fname = file["path"].lower()
@@ -157,7 +157,7 @@ for query_idx, query in enumerate(QUERIES, 1):
                                    any(k in fname for k in ["clash", "v2ray", "trojan", "hysteria", "vless", "vmess", "ss", "sub", "proxy", "node", "base64", "config", "list"]):
                                     file_url = f"https://raw.githubusercontent.com/{repo}/main/{file['path']}"
                                     all_links.append(file_url)
-									file_count += 1
+                                    file_count += 1
                         if file_count > 0:
                             query_links_count += file_count
                             print(f"      [{datetime.now().strftime('%H:%M:%S')}]       从文件树{fname}  提取到 {file_count} 条订阅文件")
@@ -192,4 +192,4 @@ print(f"   最终获得独特订阅链接: {len(all_links)} 条")
 with open("da_fr_no.txt", "w", encoding="utf-8") as f:
     f.write("\n".join(all_links))
 
-print(f"[{datetime.now().strftime('%H:%M:%S')}] ✅ 已保存到 da_fr_no.txt 文件")
+print(f"[{datetime.now().strftime('%H:%M:%S')}] ✅ 已保存到 daily_free_nodes.txt 文件")
