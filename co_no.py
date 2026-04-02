@@ -8,6 +8,7 @@ import os
 
 # 从 GitHub Actions 环境变量获取 Token（如果没有则使用公共访问）
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
+
 headers = {
     "Authorization": f"token {GITHUB_TOKEN}" if GITHUB_TOKEN else "",
     "User-Agent": "Mozilla/5.0 (compatible; FreeNodesCollector/2.0)"
@@ -46,20 +47,11 @@ checked_count = 0        # 统计总共检查了多少个仓库
 
 
 # ====================== 通用限流处理函数 ======================
-def handle_rate_limit(resp, operation_name=""):
-    """统一处理 GitHub API 限流"""
-
-
-
-
-
-
-
-
-
-
-
-
+def handle_rate_limit(resp, operation_name="未知操作"):
+    """
+    统一处理 GitHub API 限流
+    返回 True 表示已处理限流，需要重试；返回 False 表示未触发限流
+    """
     if resp.status_code != 403:
         return False
     
@@ -80,16 +72,20 @@ print(f"🚀 {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} 开始动态搜索..
 
 for query_idx, query in enumerate(QUERIES, 1):
     print(f"[{query_idx}/{len(QUERIES)}] 搜索关键词: {query}")
-    query_links_count = 0
+	# 当前关键词贡献的链接数量
+    query_links_count = 0   
 
     page = 1
     while page <= 8:
+		print(f"  [{datetime.now().strftime('%H:%M:%S')}]   正在请求第 {page} 页...")
         url = f"https://api.github.com/search/repositories?q={query}&sort=updated&order=desc&per_page=100&page={page}"
         
         try:
             resp = requests.get(url, headers=headers, timeout=15)
             
+			# 调用通用限流处理函数
             if handle_rate_limit(resp, f"搜索关键词第{page}页"):
+				# 限流后重试当前页
                 continue
                 
             if resp.status_code != 200:
@@ -98,8 +94,8 @@ for query_idx, query in enumerate(QUERIES, 1):
 
             items = resp.json().get("items", [])
             if not items:
-                break   # 该页没有结果，结束当前关键词搜索
-
+				print(f"  [{datetime.now().strftime('%H:%M:%S')}]   第{page}页没有结果，结束当前关键词搜索")
+                break   
 
         # ==================== 处理搜索结果中的每个仓库 ====================
             for item in items:
@@ -114,28 +110,25 @@ for query_idx, query in enumerate(QUERIES, 1):
 
             # ==================== 验证仓库是否在过去24小时内有更新 ====================
                 # 检查仓库最新 commit
+				print(f"    [{datetime.now().strftime('%H:%M:%S')}]     检查仓库 ({checked_count}): {repo}")
+				
                 commit_url = f"https://api.github.com/repos/{repo}/commits?per_page=1"
                 c_resp = requests.get(commit_url, headers=headers, timeout=10)
                 
                 if handle_rate_limit(c_resp, f"仓库 {repo} commit 查询"):
-
-
-
                     continue
                     
                 if c_resp.status_code != 200:
+					print(f"    [{datetime.now().strftime('%H:%M:%S')}]   仓库 ({checked_count}): {repo}   commit 查询失败，状态码: {c_resp.status_code}")
                     continue
-
 
                 try:
                     commit_time_str = c_resp.json()[0]["commit"]["committer"]["date"]
                     commit_time = datetime.fromisoformat(commit_time_str.replace("Z", "+00:00"))
                     
-
-
                     if datetime.now(timezone.utc) - commit_time >= timedelta(hours=24):
+						print(f"    [{datetime.now().strftime('%H:%M:%S')}]     仓库 ({checked_count}): {repo}   超过24小时未更新，跳过")
                         continue
-
 
                     print(f"    ✓ 发现24h更新仓库 ({checked_count}): {repo}")
 
@@ -149,11 +142,13 @@ for query_idx, query in enumerate(QUERIES, 1):
                         extracted = re.findall(r'https?://raw\.githubusercontent\.com/[^"\s<>`\'\)]+', r.text)
                         all_links.extend(extracted)
                         query_links_count += len(extracted)
+						print(f"     [{datetime.now().strftime('%H:%M:%S')}]      从 README 提取到 {len(extracted)} 条链接")
 
                     # 方法2: 遍历仓库文件树，自动发现可能的订阅文件
                     tree_url = f"https://api.github.com/repos/{repo}/git/trees/main?recursive=1"
                     t_resp = requests.get(tree_url, headers=headers, timeout=10)
                     if t_resp.status_code == 200:
+						file_count = 0
                         for file in t_resp.json().get("tree", []):
                             if file["type"] == "blob":    # 是文件而不是目录
                                 fname = file["path"].lower()
@@ -162,28 +157,25 @@ for query_idx, query in enumerate(QUERIES, 1):
                                    any(k in fname for k in ["clash", "v2ray", "trojan", "hysteria", "vless", "vmess", "ss", "sub", "proxy", "node", "base64", "config", "list"]):
                                     file_url = f"https://raw.githubusercontent.com/{repo}/main/{file['path']}"
                                     all_links.append(file_url)
-
-                                    query_links_count += 1
+									file_count += 1
+                        if file_count > 0:
+                            query_links_count += file_count
+                            print(f"      [{datetime.now().strftime('%H:%M:%S')}]       从文件树{fname}  提取到 {file_count} 条订阅文件")
                 # 单个仓库出错不影响整体运行
                 except Exception as e:
-                    print(f"      仓库 {repo} 处理异常: {e}（已跳过）")
-
+                    print(f"      [{datetime.now().strftime('%H:%M:%S')}]       处理仓库 {repo} 时发生异常: {e}（已跳过）")
 
                 # 每次处理完一个仓库后稍微等待，避免触发次要限流
                 time.sleep(0.25)
 
-
         except Exception as e:
-            print(f"  关键词 {query} 第{page}页发生异常: {e}")
+            print(f"  [{datetime.now().strftime('%H:%M:%S')}]   关键词 '{query}' 第{page}页发生异常: {e}")
         
         # 处理完一页后等待
         page += 1
         time.sleep(0.6)
 
-
-
-
-    print(f"  └─ 本关键词贡献 {query_links_count} 条链接")
+    print(f"[{datetime.now().strftime('%H:%M:%S')}]   关键词 '{query}' 总共贡献 {query_links_count} 条链接")
 
 
 
@@ -192,7 +184,7 @@ for query_idx, query in enumerate(QUERIES, 1):
 # 全局去重（防止同一个链接被多次加入）
 all_links = list(dict.fromkeys(all_links))
 
-print(f"\n🎉 搜集完成！")
+print(f"\n[{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}] 🎉 搜集任务完成！")
 print(f"   共检查仓库数量: {len(seen_repos)} 个")
 print(f"   最终获得独特订阅链接: {len(all_links)} 条")
 
@@ -200,4 +192,4 @@ print(f"   最终获得独特订阅链接: {len(all_links)} 条")
 with open("da_fr_no.txt", "w", encoding="utf-8") as f:
     f.write("\n".join(all_links))
 
-print("✅ 已保存到 da_fr_no.txt 文件")
+print(f"[{datetime.now().strftime('%H:%M:%S')}] ✅ 已保存到 daily_free_nodes.txt 文件")
