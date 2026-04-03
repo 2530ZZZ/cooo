@@ -25,8 +25,9 @@ jobs:
     # 强制 GitHub Actions 使用 Node.js 24，解决 Node.js 20 已弃用警告
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      NODE_NO_WARNINGS: "1"           # 隐藏弃用警告，让日志更干净
 
-    # 关键：声明需要写权限
+    # 关键：声明需要写权限（必须开启，否则 git push 会 403）
     permissions:
       contents: write     # 允许推送代码
       actions: read
@@ -47,7 +48,7 @@ jobs:
       # 步骤3：安装 Python 依赖
       - name: 安装依赖（requests 库）
         run: pip install requests
-        # 安装 collect_nodes.py 脚本需要的 requests 库
+        # 安装 co_no.py 脚本需要的 requests 库
 
       # 步骤4：执行我们的搜集脚本
       - name: 运行动态搜索脚本
@@ -56,17 +57,18 @@ jobs:
           # 让脚本可以使用已认证的 GitHub API（更高的速率限制）
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: python co_no.py
-        # 执行我们编写的 collect_nodes.py 脚本
+        # 执行我们编写的 co_no.py 脚本
 
       # 步骤5：将生成的文件提交回仓库
-      - name: 提交更新后的 da_fr_no.txt
+      - name: 提交更新后的 da_fr_no.txt 和 no.txt
         run: |
-          # 配置 git 提交用户信息
+          # 配置 git 提交用户信息（使用官方推荐的 bot 身份）
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           
           # 添加文件
           git add da_fr_no.txt
+          git add no.txt
           
           # 提交（如果文件没有变化则不提交）
           git commit -m "自动更新节点列表 - $(date +'%Y-%m-%d %H:%M:%S UTC')" || echo "No changes to commit"
