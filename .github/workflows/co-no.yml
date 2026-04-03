@@ -71,7 +71,8 @@ jobs:
           git add no.txt
           
           # 提交（如果文件没有变化则不提交）
-          git commit -m "自动更新节点列表 - $(date +'%Y-%m-%d %H:%M:%S UTC')" || echo "No changes to commit"
+          # 使用北京时间（UTC+8）作为提交时间
+          git commit -m "自动更新节点列表 - $(date -u -d '+8 hours' +'%Y-%m-%d %H:%M:%S CST')" || echo "No changes to commit"
           
           # 推送到仓库
           git push
