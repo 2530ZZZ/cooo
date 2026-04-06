@@ -129,15 +129,6 @@ for query_idx, query in enumerate(QUERIES, 1):
                         continue
                     print(f"      ✓ 发现24h更新仓库 ({checked_count}): {repo}")
                     # ==================== 统一处理：README 和文件树 ====================
-                    # 处理 README
-                    readme_url = f"https://raw.githubusercontent.com/{repo}/main/README.md"
-                    r = requests.get(readme_url, headers=headers, timeout=10)
-                    if r.status_code == 200:
-                        nodes_from_readme = extract_nodes_from_text(r.text)
-                        if nodes_from_readme:
-                            unique_nodes.update(nodes_from_readme)
-                            print(f"        从 README 提取到 {len(nodes_from_readme)} 条节点")
-
                     # 处理文件树中的订阅文件（支持多层嵌套）
                     tree_url = f"https://api.github.com/repos/{repo}/git/trees/main?recursive=1"
                     t_resp = requests.get(tree_url, headers=headers, timeout=10)
@@ -145,8 +136,9 @@ for query_idx, query in enumerate(QUERIES, 1):
                         for file in t_resp.json().get("tree", []):
                             if file["type"] == "blob":
                                 fname = file["path"].lower()
-                                if fname.endswith((".yaml", ".yml", ".txt", ".json", ".base64", ".list")) and \
-                                   any(k in fname for k in ["clash", "v2ray", "trojan", "hysteria", "vless", "vmess", "ss", "sub", "proxy", "node", "base64", "config", "list"]):
+                                # 关键改进：把 README.md 也当作普通文件处理
+                                if fname.endswith((".yaml", ".yml", ".txt", ".json", ".base64", ".list", "readme.md")) and \
+                                   any(k in fname for k in ["clash", "v2ray", "trojan", "hysteria", "vless", "vmess", "ss", "sub", "proxy", "node", "base64", "config", "list", "readme"]):
                                     # 对每个具体文件单独检查最后 commit 时间（解决嵌套文件夹问题）
                                     file_commit_url = f"https://api.github.com/repos/{repo}/commits?path={file['path']}&per_page=1"
                                     f_resp = requests.get(file_commit_url, headers=headers, timeout=10)
@@ -157,7 +149,7 @@ for query_idx, query in enumerate(QUERIES, 1):
                                             if datetime.now(timezone.utc) - file_time < timedelta(hours=24):
                                                 file_url = f"https://raw.githubusercontent.com/{repo}/main/{file['path']}"
                                                 all_links.append(file_url)
-                                                # 下载文件内容并提取节点（与 README 使用同一逻辑）
+                                                # 下载文件内容并提取节点
                                                 file_resp = requests.get(file_url, headers=headers, timeout=10)
                                                 if file_resp.status_code == 200:
                                                     nodes_from_file = extract_nodes_from_text(file_resp.text)
@@ -199,4 +191,3 @@ with open("da_fr_no.txt", "w", encoding="utf-8") as f:
     f.write("\n".join(all_links))
 
 print(f"[{datetime.now(beijing_tz).strftime('%H:%M:%S')}] ✅ 已保存到 da_fr_no.txt 文件")
-
