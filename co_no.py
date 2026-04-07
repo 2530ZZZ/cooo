@@ -85,26 +85,55 @@ def extract_nodes_from_text(text):
     返回去重后的节点列表
     """
     nodes = []
-    # 协议节点提取
+
+    # 1. 直接协议节点提取
     protocol_pattern = r'(vmess|vless|trojan|ss|ssr|hysteria2|tuic|reality)://[^\s<>"\']{10,}'
     found = re.findall(protocol_pattern, text)
     nodes.extend(found)
 
-    # base64 整段节点提取 + 解码
+    # 2. 加强版 base64 解码
     base64_pattern = r'[A-Za-z0-9+/=]{80,}'
     base64_candidates = re.findall(base64_pattern, text)
+
     for b64 in base64_candidates:
+        b64 = b64.strip()
+        if not b64 or b64.startswith('//'):   # 提前过滤明显的无效开头
+            continue
+
         try:
-            decoded = base64.b64decode(b64 + '==').decode('utf-8', errors='ignore')
+            # 自动补全 padding（base64 长度必须是4的倍数）
+            padding = len(b64) % 4
+            if padding:
+                b64 += '=' * (4 - padding)
+
+            decoded = base64.b64decode(b64, validate=False).decode('utf-8', errors='ignore')
             lines = decoded.splitlines()
+
             for line in lines:
                 line = line.strip()
+                if not line:
+                    continue
                 if line.startswith(('vmess://', 'vless://', 'trojan://', 'ss://', 'ssr://', 'hysteria2://', 'tuic://')):
                     nodes.append(line)
+                elif line.startswith('//'):      # 仍然以 // 开头，尝试去掉前缀再解码一次
+                    try:
+                        clean = line.lstrip('/')
+                        padding2 = len(clean) % 4
+                        if padding2:
+                            clean += '=' * (4 - padding2)
+                        decoded2 = base64.b64decode(clean, validate=False).decode('utf-8', errors='ignore')
+                        for l2 in decoded2.splitlines():
+                            l2 = l2.strip()
+                            if l2.startswith(('vmess://', 'vless://', 'trojan://', 'ss://', 'ssr://', 'hysteria2://', 'tuic://')):
+                                nodes.append(l2)
+                    except:
+                        pass
         except:
-            # 解码失败，保留原始 base64
-            nodes.append(b64)
-    return nodes
+            # 最后兜底：如果还是失败，不保留原始 b64
+            pass
+    # 去重并过滤明显无效的行
+    nodes = [n for n in nodes if n and not n.startswith('//')]
+    return list(dict.fromkeys(nodes))  # 保持顺序去重
 
 # ====================== 新增：验证raw链接是否有效且包含节点 =================
 def is_valid_node_link(link):
@@ -124,6 +153,7 @@ def is_valid_node_link(link):
             return True, nodes
         return False, None
     except:
+
         return False, None
 
 # ====================== 公共方法：处理单个仓库 ======================
@@ -218,6 +248,9 @@ for query_idx, query in enumerate(QUERIES, 1):
             if not items:
                 print(f" [{datetime.now(beijing_tz).strftime('%H:%M:%S')}] 第{page}页没有结果，结束当前关键词搜索")
                 break
+
+
+
 
             for item in items:
                 repo = item["full_name"]
