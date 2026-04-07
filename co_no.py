@@ -14,6 +14,7 @@ headers = {
 }
 
 # 关键词列表（你可以继续添加或删除）
+
 QUERIES = [
 "free nodes subscription clash v2ray trojan hysteria", "free clash sub github",
 "free v2ray config subscription", "V2RayRoot subscription", "TelegramV2rayCollector",
@@ -90,9 +91,98 @@ def extract_nodes_from_text(text):
             nodes.append(b64)
     return nodes
 
+# ====================== 新增：验证raw链接是否有效且包含节点 =================
+def is_valid_node_link(link):
+    """
+    验证 raw 链接是否可访问且包含有效节点
+    同时返回所包含的节点
+    """
+    try:
+        resp = requests.get(link, headers=headers, timeout=10)
+        if resp.status_code != 200:
+            return False, None
+        content = resp.text.strip()
+        if len(content) < 50:    # 内容太短，基本无效
+            return False, None
+        nodes = extract_nodes_from_text(content)
+        if nodes:
+            return True, nodes
+        return False, None
+    except:
+        return False, None
+
+# ====================== 公共方法：处理单个仓库 ======================
+def process_repo(repo):
+    """公共方法：处理单个仓库（检查更新时间 + 调用文件树处理）"""
+    print(f"    [{datetime.now(beijing_tz).strftime('%H:%M:%S')}]     检查仓库 ({checked_count}): {repo}")
+
+    commit_url = f"https://api.github.com/repos/{repo}/commits?per_page=1"
+    c_resp = requests.get(commit_url, headers=headers, timeout=10)
+    if handle_rate_limit(c_resp, f"仓库 {repo} commit 查询"):
+        return
+    if c_resp.status_code != 200:
+        return
+
+    try:
+        commit_time_str = c_resp.json()[0]["commit"]["committer"]["date"]
+        commit_time = datetime.fromisoformat(commit_time_str.replace("Z", "+00:00"))
+        if datetime.now(timezone.utc) - commit_time >= timedelta(hours=24):
+            return
+
+        print(f"      ✓ 发现24h更新仓库 ({checked_count}): {repo}")
+        # 调用文件树处理方法
+        process_file_tree(repo)
+    except Exception as e:
+        print(f"      处理仓库 {repo} 时发生异常: {e}（已跳过）")
+
+# ====================== 公共方法：处理文件树（核心逻辑） ======================
+def process_file_tree(repo):
+    """公共方法：处理仓库的文件树，提取符合条件的订阅文件"""
+    tree_url = f"https://api.github.com/repos/{repo}/git/trees/main?recursive=1"
+    t_resp = requests.get(tree_url, headers=headers, timeout=10)
+    if t_resp.status_code != 200:
+        return
+
+    for file in t_resp.json().get("tree", []):
+        if file["type"] != "blob":
+            continue
+
+        fname = file["path"].lower()
+        # 把 README.md 也当作普通文件处理
+        if not fname.endswith((".yaml", ".yml", ".txt", ".json", ".base64", ".list", "readme.md")):
+            continue
+        if not any(k in fname for k in ["clash", "v2ray", "trojan", "hysteria", "vless", "vmess", "ss", "sub", "proxy", "node", "base64", "config", "list", "readme"]):
+            continue
+
+        # 对每个具体文件单独检查最后 commit 时间（解决多层嵌套问题）
+        file_commit_url = f"https://api.github.com/repos/{repo}/commits?path={file['path']}&per_page=1"
+        f_resp = requests.get(file_commit_url, headers=headers, timeout=10)
+        if f_resp.status_code != 200:
+            continue
+
+        try:
+            file_time_str = f_resp.json()[0]["commit"]["committer"]["date"]
+            file_time = datetime.fromisoformat(file_time_str.replace("Z", "+00:00"))
+            if datetime.now(timezone.utc) - file_time >= timedelta(hours=24):
+                continue
+
+            file_url = f"https://raw.githubusercontent.com/{repo}/main/{file['path']}"
+
+            # 关键修改：验证 + 提取节点
+            valid, nodes = is_valid_node_link(file_url)
+            if valid and nodes:
+                all_links.append(file_url)
+                unique_nodes.update(nodes)           # ← 这里把节点加入去重集合
+                print(f"        文件 {file['path']} 验证通过，提取 {len(nodes)} 条节点，已加入 da_fr_no.txt")
+            else:
+                print(f"        文件 {file['path']} 验证失败（无有效节点或无法访问），跳过")
+        except Exception as e:
+            print(f"        处理文件 {file['path']} 时发生异常: {e}（已跳过）")
+
 # ====================== 主程序 ======================
 for query_idx, query in enumerate(QUERIES, 1):
     print(f"[{query_idx}/{len(QUERIES)}] 搜索关键词: {query}")
+    global query_links_count          # 声明全局变量
     query_links_count = 0
     page = 1
     while page <= 8:
@@ -109,57 +199,15 @@ for query_idx, query in enumerate(QUERIES, 1):
             if not items:
                 print(f" [{datetime.now(beijing_tz).strftime('%H:%M:%S')}] 第{page}页没有结果，结束当前关键词搜索")
                 break
+
             for item in items:
                 repo = item["full_name"]
                 if repo in seen_repos:
                     continue
                 seen_repos.add(repo)
                 checked_count += 1
-                print(f"    [{datetime.now(beijing_tz).strftime('%H:%M:%S')}]     检查仓库 ({checked_count}): {repo}")
-                commit_url = f"https://api.github.com/repos/{repo}/commits?per_page=1"
-                c_resp = requests.get(commit_url, headers=headers, timeout=10)
-                if handle_rate_limit(c_resp, f"仓库 {repo} commit 查询"):
-                    continue
-                if c_resp.status_code != 200:
-                    continue
-                try:
-                    commit_time_str = c_resp.json()[0]["commit"]["committer"]["date"]
-                    commit_time = datetime.fromisoformat(commit_time_str.replace("Z", "+00:00"))
-                    if datetime.now(timezone.utc) - commit_time >= timedelta(hours=24):
-                        continue
-                    print(f"      ✓ 发现24h更新仓库 ({checked_count}): {repo}")
-                    # ==================== 统一处理：README 和文件树 ====================
-                    # 处理文件树中的订阅文件（支持多层嵌套）
-                    tree_url = f"https://api.github.com/repos/{repo}/git/trees/main?recursive=1"
-                    t_resp = requests.get(tree_url, headers=headers, timeout=10)
-                    if t_resp.status_code == 200:
-                        for file in t_resp.json().get("tree", []):
-                            if file["type"] == "blob":
-                                fname = file["path"].lower()
-                                # 关键改进：把 README.md 也当作普通文件处理
-                                if fname.endswith((".yaml", ".yml", ".txt", ".json", ".base64", ".list", "readme.md")) and \
-                                   any(k in fname for k in ["clash", "v2ray", "trojan", "hysteria", "vless", "vmess", "ss", "sub", "proxy", "node", "base64", "config", "list", "readme"]):
-                                    # 对每个具体文件单独检查最后 commit 时间（解决嵌套文件夹问题）
-                                    file_commit_url = f"https://api.github.com/repos/{repo}/commits?path={file['path']}&per_page=1"
-                                    f_resp = requests.get(file_commit_url, headers=headers, timeout=10)
-                                    if f_resp.status_code == 200:
-                                        try:
-                                            file_time_str = f_resp.json()[0]["commit"]["committer"]["date"]
-                                            file_time = datetime.fromisoformat(file_time_str.replace("Z", "+00:00"))
-                                            if datetime.now(timezone.utc) - file_time < timedelta(hours=24):
-                                                file_url = f"https://raw.githubusercontent.com/{repo}/main/{file['path']}"
-                                                all_links.append(file_url)
-                                                # 下载文件内容并提取节点
-                                                file_resp = requests.get(file_url, headers=headers, timeout=10)
-                                                if file_resp.status_code == 200:
-                                                    nodes_from_file = extract_nodes_from_text(file_resp.text)
-                                                    if nodes_from_file:
-                                                        unique_nodes.update(nodes_from_file)
-                                                        print(f"        从文件 {file['path']} 提取到 {len(nodes_from_file)} 条节点")
-                                        except:
-                                            pass
-                except Exception as e:
-                    print(f"      处理仓库 {repo} 时发生异常: {e}（已跳过）")
+                # 调用仓库处理方法
+                process_repo(repo)
                 time.sleep(0.25)
         except Exception as e:
             print(f"  关键词 '{query}' 第{page}页发生异常: {e}")
