@@ -177,12 +177,11 @@ def process_file_tree(repo):
 
             file_url = f"https://raw.githubusercontent.com/{repo}/main/{file['path']}"
 
-            # 关键修改：验证 + 提取节点
+            # 关键修改：验证raw链接是否可访问是否有节点 + 提取节点
             valid, nodes = is_valid_node_link(file_url)
             if valid and nodes:
                 all_links.append(file_url)
                 unique_nodes.update(nodes)    # ← 这里把节点加入去重集合
-                global query_links_count
                 query_links_count += 1
                 print(f"      📄 文件 {file['path']:.<60} ✅ 有效 | 提取 {len(nodes):>5} 条节点")
             else:
