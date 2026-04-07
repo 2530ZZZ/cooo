@@ -14,6 +14,7 @@ headers = {
 }
 
 # 关键词列表（你可以继续添加或删除）
+
 QUERIES = [
 "free nodes subscription clash v2ray trojan hysteria", "free clash sub github",
 "free v2ray config subscription", "V2RayRoot subscription", "TelegramV2rayCollector",
@@ -37,6 +38,9 @@ QUERIES = [
 
 # ==================== 全局变量 ====================
 all_links = []                    # 最终收集到的所有订阅链接（常规订阅文件）
+
+
+
 seen_repos = set()                # 已检查过的仓库（关键：实现智能跳过重复仓库）
 checked_count = 0                 # 统计总共检查了多少个仓库
 unique_nodes = set()              # 全局去重集合（用于最终生成干净的 no.txt）
@@ -44,9 +48,14 @@ query_links_count = 0             # 当前关键词贡献的链接数量
 
 beijing_tz = timezone(timedelta(hours=8))     # 所有日志、打印、commit 消息都改成北京时间显示
 
+# ====================== 记录程序开始时间（用于计算总耗时） ======================
+start_time = time.time()
+
 print(f"[{datetime.now(beijing_tz).strftime('%Y-%m-%d %H:%M:%S')}] 🚀 程序启动，开始动态搜索...")
 
 # ====================== 通用限流处理函数 ======================
+
+
 def handle_rate_limit(resp, operation_name="未知操作"):
     """统一处理 GitHub API 限流"""
     if resp.status_code != 403:
@@ -215,7 +224,7 @@ for query_idx, query in enumerate(QUERIES, 1):
         time.sleep(0.6)
     print(f"[{datetime.now(beijing_tz).strftime('%H:%M:%S')}]   └─ 本关键词贡献 {query_links_count} 条有效链接")
 
-# ====================== 最终处理 ======================
+# ====================== 最终处理 写入文件 ======================
 # 把去重后的节点写入 no.txt
 if unique_nodes:
     with open("no.txt", "w", encoding="utf-8") as f:
@@ -224,7 +233,7 @@ if unique_nodes:
 else:
     print(f"\n[{datetime.now(beijing_tz).strftime('%H:%M:%S')}] ⚠️  未提取到任何有效节点")
 
-# 生成 no.txt 的 raw 链接
+# 生成 no.txt 的 raw 链接 加入到 da_fr_no.txt
 repo_name = os.getenv("GITHUB_REPOSITORY", "2530ZZZ/cooo")
 no_txt_raw_url = f"https://raw.githubusercontent.com/{repo_name}/main/no.txt"
 all_links.append(no_txt_raw_url)
@@ -232,12 +241,60 @@ all_links.append(no_txt_raw_url)
 # 全局去重常规链接
 all_links = list(dict.fromkeys(all_links))
 
-print(f"\n[{datetime.now(beijing_tz).strftime('%Y-%m-%d %H:%M:%S')}] 🎉 搜集任务完成！")
-print(f"   共检查仓库数量: {len(seen_repos):,} 个")
-print(f"   最终获得独特订阅链接: {len(all_links):,} 条")
-print(f"   no.txt 中去重后节点数量: {len(unique_nodes):,} 条")
-
 with open("da_fr_no.txt", "w", encoding="utf-8") as f:
     f.write("\n".join(all_links))
 
-print(f"[{datetime.now(beijing_tz).strftime('%H:%M:%S')}] ✅ 已保存到 da_fr_no.txt 文件")
+
+# ====================== 日志信息处理 ======================
+# 计算总耗时
+total_seconds = int(time.time() - start_time)
+hours = total_seconds // 3600
+minutes = (total_seconds % 3600) // 60
+seconds = total_seconds % 60
+runtime_str = f"{hours}小时 {minutes}分 {seconds}秒" if hours > 0 else f"{minutes}分 {seconds}秒"
+
+# ====================== no.txt 新旧节点对比 ======================
+
+old_nodes = set()
+if os.path.exists("no.txt"):
+    with open("no.txt", "r", encoding="utf-8") as f:
+        old_nodes = {line.strip() for line in f if line.strip()}
+
+new_nodes = unique_nodes
+added_nodes = new_nodes - old_nodes
+removed_nodes = old_nodes - new_nodes
+kept_nodes = new_nodes & old_nodes
+
+print(f"\n📈 no.txt 节点对比报告")
+print(f"   新 no.txt 节点总数     : {len(new_nodes):,} 条")
+print(f"   旧 no.txt 节点总数     : {len(old_nodes):,} 条")
+print(f"   新增节点               : {len(added_nodes):,} 条 (+{len(added_nodes)})")
+print(f"   去除节点               : {len(removed_nodes):,} 条 (-{len(removed_nodes)})")
+print(f"   保留节点（新旧都有）   : {len(kept_nodes):,} 条")
+
+# ====================== da_fr_no.txt 新旧链接对比 ======================
+old_links = set()
+if os.path.exists("da_fr_no.txt"):
+    with open("da_fr_no.txt", "r", encoding="utf-8") as f:
+        old_links = {line.strip() for line in f if line.strip()}
+
+new_links = set(all_links)
+added_links = new_links - old_links
+removed_links = old_links - new_links
+kept_links = new_links & old_links
+
+print(f"\n🔗 da_fr_no.txt 链接对比报告")
+print(f"   新 da_fr_no.txt 链接总数 : {len(new_links):,} 条")
+print(f"   旧 da_fr_no.txt 链接总数 : {len(old_links):,} 条")
+print(f"   新增链接                 : {len(added_links):,} 条 (+{len(added_links)})")
+print(f"   去除链接                 : {len(removed_links):,} 条 (-{len(removed_links)})")
+print(f"   保留链接（新旧都有）     : {len(kept_links):,} 条")
+
+
+
+# ====================== 最终总结日志 ======================
+print(f"\n🎉 [{datetime.now(beijing_tz).strftime('%Y-%m-%d %H:%M:%S')}] 搜集任务完成！总耗时: {runtime_str}")
+print(f"   共检查仓库数量: {len(seen_repos):,} 个")
+print(f"   最终获得独特订阅链接: {len(all_links):,} 条")
+print(f"   no.txt 中去重后节点数量: {len(unique_nodes):,} 条")
+print(f"[{datetime.now(beijing_tz).strftime('%H:%M:%S')}] ✅ 已保存 da_fr_no.txt 和 no.txt 文件")
