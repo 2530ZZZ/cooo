@@ -248,7 +248,7 @@ def process_file_tree(repo):
                 unique_nodes.update(nodes)    # ← 这里把节点加入去重集合
                 global query_links_count
                 query_links_count += 1
-                print(f"      📄 文件 {file['path']:.<60} ✅ 有效 | 提取 {len(nodes):>5} 条节点")
+                #print(f"      📄 文件 {file['path']:.<60} ✅ 有效 | 提取 {len(nodes):>5} 条节点")
             else:
                 print(f"      📄 文件 {file['path']:.<60} ❌ 无效（无有效节点或无法访问）")
         except Exception as e:
