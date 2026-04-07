@@ -80,60 +80,89 @@ def handle_rate_limit(resp, operation_name="未知操作"):
 # ====================== 新增：统一节点提取函数 ======================
 def extract_nodes_from_text(text):
     """
-    公共方法：从任意文本（README 或订阅文件内容）中提取节点
-    支持所有常见协议 + base64 解码
-    返回去重后的节点列表
+    增强版节点提取函数 - 支持多种常见格式
+    1. 标准协议链接: vmess:// vless:// trojan:// ss:// 等
+    2. Clash / Sing-box YAML 格式的 proxies 列表
+    3. base64 编码的节点（包括多行、嵌套）
+    4. 自动过滤无效内容
     """
     nodes = []
+    if not text or len(text.strip()) < 10:
+        return nodes
 
-    # 1. 直接协议节点提取
-    protocol_pattern = r'(vmess|vless|trojan|ss|ssr|hysteria2|tuic|reality)://[^\s<>"\']{10,}'
-    found = re.findall(protocol_pattern, text)
+    # ==================== 1. 提取标准协议链接 ====================
+    protocol_pattern = r'(vmess|vless|trojan|ss|ssr|hysteria2|tuic|reality)://[^\s<>"\']{15,}'
+    found = re.findall(protocol_pattern, text, re.IGNORECASE)
     nodes.extend(found)
 
-    # 2. 加强版 base64 解码
-    base64_pattern = r'[A-Za-z0-9+/=]{80,}'
-    base64_candidates = re.findall(base64_pattern, text)
+    # ==================== 2. 提取 Clash / YAML 格式节点 ====================
+    # 匹配 proxies: - { ... } 这种结构
+    yaml_node_pattern = r'-\s*\{[^}]*(?:name|server|port|type|uuid|password|ps)[^}]*\}'
+    yaml_matches = re.findall(yaml_node_pattern, text, re.IGNORECASE | re.DOTALL)
+    for match in yaml_matches:
+        # 清理并标准化
+        clean = match.strip()
+        if clean and len(clean) > 30:   # 避免太短的垃圾
+            nodes.append(clean)
 
+    # ==================== 3. 加强 base64 解码 ====================
+    base64_pattern = r'[A-Za-z0-9+/=]{60,}'
+    base64_candidates = re.findall(base64_pattern, text)
+    
     for b64 in base64_candidates:
         b64 = b64.strip()
-        if not b64 or b64.startswith('//'):   # 提前过滤明显的无效开头
+        if len(b64) < 60 or b64.startswith('//'):
             continue
-
+            
         try:
-            # 自动补全 padding（base64 长度必须是4的倍数）
+            # 自动补全 padding
             padding = len(b64) % 4
             if padding:
                 b64 += '=' * (4 - padding)
-
-            decoded = base64.b64decode(b64, validate=False).decode('utf-8', errors='ignore')
-            lines = decoded.splitlines()
-
-            for line in lines:
+            
+            decoded_bytes = base64.b64decode(b64, validate=False)
+            decoded = decoded_bytes.decode('utf-8', errors='ignore')
+            
+            # 分割成行并提取有效节点
+            for line in decoded.splitlines():
                 line = line.strip()
-                if not line:
+                if not line or len(line) < 20:
                     continue
+                    
                 if line.startswith(('vmess://', 'vless://', 'trojan://', 'ss://', 'ssr://', 'hysteria2://', 'tuic://')):
                     nodes.append(line)
-                elif line.startswith('//'):      # 仍然以 // 开头，尝试去掉前缀再解码一次
-                    try:
-                        clean = line.lstrip('/')
-                        padding2 = len(clean) % 4
-                        if padding2:
-                            clean += '=' * (4 - padding2)
-                        decoded2 = base64.b64decode(clean, validate=False).decode('utf-8', errors='ignore')
-                        for l2 in decoded2.splitlines():
-                            l2 = l2.strip()
-                            if l2.startswith(('vmess://', 'vless://', 'trojan://', 'ss://', 'ssr://', 'hysteria2://', 'tuic://')):
-                                nodes.append(l2)
-                    except:
-                        pass
+                elif '{' in line and ('type:' in line or 'uuid:' in line or 'password:' in line):
+                    # 可能是 YAML 片段，保留原始行
+                    nodes.append(line)
         except:
-            # 最后兜底：如果还是失败，不保留原始 b64
-            pass
-    # 去重并过滤明显无效的行
-    nodes = [n for n in nodes if n and not n.startswith('//')]
-    return list(dict.fromkeys(nodes))  # 保持顺序去重
+            # 尝试去掉前导 // 再解码一次
+            try:
+                clean = b64.lstrip('/')
+                padding = len(clean) % 4
+                if padding:
+                    clean += '=' * (4 - padding)
+                decoded = base64.b64decode(clean, validate=False).decode('utf-8', errors='ignore')
+                for line in decoded.splitlines():
+                    line = line.strip()
+                    if line.startswith(('vmess://', 'vless://', 'trojan://', 'ss://')):
+                        nodes.append(line)
+            except:
+                pass
+
+    # ==================== 最终清理 ====================
+    # 去重 + 过滤明显无效的内容
+    cleaned_nodes = []
+    seen = set()
+    for n in nodes:
+        n = n.strip()
+        if not n or n.startswith('//') or len(n) < 15:
+            continue
+        if n in seen:
+            continue
+        seen.add(n)
+        cleaned_nodes.append(n)
+
+    return cleaned_nodes
 
 # ====================== 新增：验证raw链接是否有效且包含节点 =================
 def is_valid_node_link(link):
@@ -153,7 +182,6 @@ def is_valid_node_link(link):
             return True, nodes
         return False, None
     except:
-
         return False, None
 
 # ====================== 公共方法：处理单个仓库 ======================
@@ -248,9 +276,6 @@ for query_idx, query in enumerate(QUERIES, 1):
             if not items:
                 print(f" [{datetime.now(beijing_tz).strftime('%H:%M:%S')}] 第{page}页没有结果，结束当前关键词搜索")
                 break
-
-
-
 
             for item in items:
                 repo = item["full_name"]
