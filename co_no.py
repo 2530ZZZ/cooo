@@ -42,7 +42,7 @@ checked_count = 0                 # 统计总共检查了多少个仓库
 unique_nodes = set()              # 全局去重集合（用于最终生成干净的 no.txt）
 query_links_count = 0             # 当前关键词贡献的链接数量
 
-beijing_tz = timezone(timedelta(hours=8))     # 北京时间
+beijing_tz = timezone(timedelta(hours=8))     # 所有日志、打印、commit 消息都改成北京时间显示
 
 print(f"[{datetime.now(beijing_tz).strftime('%Y-%m-%d %H:%M:%S')}] 🚀 程序启动，开始动态搜索...")
 
