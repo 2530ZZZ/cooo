@@ -59,9 +59,6 @@ start_time = time.time()
 print(f"[{datetime.now(beijing_tz).strftime('%Y-%m-%d %H:%M:%S')}] 🚀 程序启动,开始动态搜索...")
 
 # ====================== 通用限流处理函数 ======================
-
-
-
 def handle_rate_limit(resp, operation_name="未知操作"):
     """统一处理 GitHub API 限流"""
     if resp.status_code != 403:
@@ -77,62 +74,88 @@ def handle_rate_limit(resp, operation_name="未知操作"):
         time.sleep(90)
     return True
 
-# ====================== 新增：统一节点提取函数 ======================
+# ====================== 增强版节点提取函数（已针对多种情况优化） ======================
 def extract_nodes_from_text(text):
     """
     增强版节点提取函数 - 支持多种常见格式
-    1. 标准协议链接: vmess:// vless:// trojan:// ss:// 等
-    2. Clash / Sing-box YAML 格式的 proxies 列表
-    3. base64 编码的节点（包括多行、嵌套）
-    4. 自动过滤无效内容
+    支持情况：
+    1. 标准协议链接：vmess:// vless:// trojan:// ss:// ssr:// hysteria2:// tuic:// reality://
+    2. Shadowsocks ss:// 完整 base64 格式（包括带 # 备注）
+    3. Clash / Sing-box YAML 单行节点：- {name: ..., server: ..., type: vless, ...}
+    4. Clash 多行 proxies 格式
+    5. README 中直接写的 raw 订阅链接（https://raw.githubusercontent.com/...）
+    6. 各种 base64 编码的节点（自动解码 + 清理）
     """
     nodes = []
     if not text or len(text.strip()) < 10:
         return nodes
 
-    # ==================== 1. 提取标准协议链接 ====================
-    protocol_pattern = r'(vmess|vless|trojan|ss|ssr|hysteria2|tuic|reality)://[^\s<>"\']{15,}'
+    # 1. 提取标准协议链接（vmess://, vless://, trojan://, ss:// 等）
+    protocol_pattern = r'(vmess|vless|trojan|ss|ssr|hysteria2|tuic|reality)://[^\s<>"\']{10,}'
     found = re.findall(protocol_pattern, text, re.IGNORECASE)
     nodes.extend(found)
 
-    # ==================== 2. 提取 Clash / YAML 格式节点 ====================
-    # 匹配 proxies: - { ... } 这种结构
-    yaml_node_pattern = r'-\s*\{[^}]*(?:name|server|port|type|uuid|password|ps)[^}]*\}'
-    yaml_matches = re.findall(yaml_node_pattern, text, re.IGNORECASE | re.DOTALL)
+    # 2. 特别处理 Shadowsocks ss:// 完整 base64 格式（包括带备注）
+    ss_pattern = r'ss://[A-Za-z0-9+/=]+(?:#[^\s<>"\']*)?'
+    ss_matches = re.findall(ss_pattern, text, re.IGNORECASE)
+    nodes.extend(ss_matches)
+
+    # 3. 提取 Clash / YAML 单行节点 - {name: ..., server: ..., type: ...}
+    yaml_single_pattern = r'-\s*\{[^}]*?(?:name|server|port|type|uuid|password|ps|flow|reality-opts)[^}]*\}'
+    yaml_matches = re.findall(yaml_single_pattern, text, re.IGNORECASE | re.DOTALL)
     for match in yaml_matches:
-        # 清理并标准化
         clean = match.strip()
-        if clean and len(clean) > 30:   # 避免太短的垃圾
+        if clean and len(clean) > 40 and ('type:' in clean or 'uuid:' in clean or 'password:' in clean):
+            clean = re.sub(r'\s+', ' ', clean)  # 清理多余空格
             nodes.append(clean)
 
-    # ==================== 3. 加强 base64 解码 ====================
+    # 4. 提取 Clash 多行 proxies 格式（从 name: 开始到下一个 name: 或结尾）
+    yaml_multi_pattern = r'-\s*name:.*?(?=-\s*name:|\Z)'
+    multi_matches = re.findall(yaml_multi_pattern, text, re.IGNORECASE | re.DOTALL | re.MULTILINE)
+    for match in multi_matches:
+        clean = match.strip()
+        if clean and len(clean) > 30 and ('server:' in clean or 'type:' in clean):
+            clean = re.sub(r'\s+', ' ', clean)
+            nodes.append(clean)
+
+    # 5. 提取 文件 中直接写的 raw 订阅链接（重要增强）
+    # 匹配 https://raw.githubusercontent.com/用户名/仓库名/... 格式，并提取 repo
+    raw_link_pattern = r'https?://raw\.githubusercontent\.com/([^/\s]+/[^/\s]+)'
+    raw_matches = re.findall(raw_link_pattern, text, re.IGNORECASE)
+    
+    for repo in raw_matches:
+        repo = repo.strip()
+        if not repo or '/' not in repo:
+            continue
+            
+        # 如果这个仓库还没有处理过，就当作正常发现的仓库处理
+        if repo not in seen_repos:
+            print(f"   🔗 从 文件 中发现 raw 订阅链接，提取仓库: {repo}，加入处理队列")
+            seen_repos.add(repo)           # 防止重复处理
+            checked_count += 1
+            process_repo(repo)             # 直接走完整处理流程（推荐方式）
+
+    # 6. 加强 base64 解码（处理各种嵌套情况）
     base64_pattern = r'[A-Za-z0-9+/=]{60,}'
     base64_candidates = re.findall(base64_pattern, text)
-    
+
     for b64 in base64_candidates:
         b64 = b64.strip()
         if len(b64) < 60 or b64.startswith('//'):
             continue
-            
         try:
             # 自动补全 padding
             padding = len(b64) % 4
             if padding:
                 b64 += '=' * (4 - padding)
-            
-            decoded_bytes = base64.b64decode(b64, validate=False)
-            decoded = decoded_bytes.decode('utf-8', errors='ignore')
-            
-            # 分割成行并提取有效节点
+            decoded = base64.b64decode(b64, validate=False).decode('utf-8', errors='ignore')
             for line in decoded.splitlines():
                 line = line.strip()
-                if not line or len(line) < 20:
+                if not line:
                     continue
-                    
                 if line.startswith(('vmess://', 'vless://', 'trojan://', 'ss://', 'ssr://', 'hysteria2://', 'tuic://')):
                     nodes.append(line)
                 elif '{' in line and ('type:' in line or 'uuid:' in line or 'password:' in line):
-                    # 可能是 YAML 片段，保留原始行
                     nodes.append(line)
         except:
             # 尝试去掉前导 // 再解码一次
@@ -150,7 +173,7 @@ def extract_nodes_from_text(text):
                 pass
 
     # ==================== 最终清理 ====================
-    # 去重 + 过滤明显无效的内容
+    # 去重 + 过滤明显无效行
     cleaned_nodes = []
     seen = set()
     for n in nodes:
@@ -164,14 +187,14 @@ def extract_nodes_from_text(text):
 
     return cleaned_nodes
 
-# ====================== 新增：验证raw链接是否有效且包含节点 =================
+# ====================== 新增：验证raw链接是否有效且包含有效节点 =================
 def is_valid_node_link(link):
     """
     验证 raw 链接是否可访问且包含有效节点
     同时返回所包含的节点
     """
     try:
-        resp = requests.get(link, headers=headers, timeout=10)
+        resp = requests.get(link, headers=headers, timeout=15)  # 增加超时时间
         if resp.status_code != 200:
             return False, None
         content = resp.text.strip()
@@ -212,7 +235,7 @@ def process_repo(repo):
 def process_file_tree(repo):
     """公共方法：处理仓库的文件树，提取符合条件的订阅文件"""
     tree_url = f"https://api.github.com/repos/{repo}/git/trees/main?recursive=1"
-    t_resp = requests.get(tree_url, headers=headers, timeout=10)
+    t_resp = requests.get(tree_url, headers=headers, timeout=15)
     if t_resp.status_code != 200:
         return
 
@@ -248,11 +271,11 @@ def process_file_tree(repo):
                 unique_nodes.update(nodes)    # ← 这里把节点加入去重集合
                 global query_links_count
                 query_links_count += 1
-                #print(f"      📄 文件 {file['path']:.<60} ✅ 有效 | 提取 {len(nodes):>5} 条节点")
+                #print(f"      📄 文件 {file_url:.<60} ✅ 有效 | 提取 {len(nodes):>5} 条节点")
             else:
-                print(f"      📄 文件 {file['path']:.<60} ❌ 无效（无有效节点或无法访问）")
+                print(f"      📄 文件 {file_url:.<60} ❌ 无效（无有效节点或无法访问）")
         except Exception as e:
-            print(f"      📄 文件 {file['path']:.<60} ❌ 处理异常: {e} (已跳过)")
+            print(f"      📄 文件 {file_url:.<60} ❌ 处理异常: {e} (已跳过)")
 
 # ====================== 主程序 ======================
 for query_idx, query in enumerate(QUERIES, 1):
@@ -294,6 +317,7 @@ for query_idx, query in enumerate(QUERIES, 1):
     print(f"[{datetime.now(beijing_tz).strftime('%H:%M:%S')}]   └─ 本关键词贡献 {query_links_count} 条有效链接")
 
 # ====================== 最终处理 写入文件 ======================
+
 # 【关键修复】先读取旧文件做对比，再写入新文件
 
 old_nodes = set()
@@ -335,6 +359,7 @@ minutes = (total_seconds % 3600) // 60
 seconds = total_seconds % 60
 runtime_str = f"{hours}小时 {minutes}分 {seconds}秒" if hours > 0 else f"{minutes}分 {seconds}秒"
 
+
 # ====================== no.txt 新旧节点对比 ======================
 
 new_nodes = unique_nodes
@@ -349,6 +374,7 @@ print(f"   新增节点               : {len(added_nodes):,} 条 (+{len(added_no
 print(f"   去除节点               : {len(removed_nodes):,} 条 (-{len(removed_nodes)})")
 print(f"   保留节点（新旧都有）   : {len(kept_nodes):,} 条")
 
+
 # ====================== da_fr_no.txt 新旧链接对比 ======================
 
 new_links = set(all_links)
@@ -362,6 +388,7 @@ print(f"   旧 da_fr_no.txt 链接总数 : {len(old_links):,} 条")
 print(f"   新增链接                 : {len(added_links):,} 条 (+{len(added_links)})")
 print(f"   去除链接                 : {len(removed_links):,} 条 (-{len(removed_links)})")
 print(f"   保留链接（新旧都有）     : {len(kept_links):,} 条")
+
 
 
 
