@@ -330,26 +330,32 @@ for query_idx, query in enumerate(QUERIES, 1):
     while page <= 8:
         print(f" [{datetime.now(beijing_tz).strftime('%H:%M:%S')}] 正在请求第 {page} 页...")
         url = f"https://api.github.com/search/repositories?q={query}&sort=updated&order=desc&per_page=100&page={page}"
+
         resp = safe_get(url, timeout=30, operation_name=f"搜索关键词第{page}页")
         if resp is None:
             print(f"[{datetime.now(beijing_tz).strftime('%H:%M:%S')}] 搜索请求失败，跳过当前页")
             break
-            if resp.status_code != 200:
-                print(f" 搜索失败，第{page}页状态码: {resp.status_code}")
-                break
-            items = resp.json().get("items", [])
-            if not items:
-                print(f" [{datetime.now(beijing_tz).strftime('%H:%M:%S')}] 第{page}页没有结果，结束当前关键词搜索")
-                break
-            for item in items:
-                repo = item["full_name"]
-                if repo in seen_repos:
-                    continue
-                seen_repos.add(repo)
-                checked_count += 1
-                # 调用仓库处理方法
-                process_repo(repo)
-            time.sleep(0.3)  # 增加一点间隔，降低压力
+
+
+        if resp.status_code != 200:
+            print(f" 搜索失败，第{page}页状态码: {resp.status_code}")
+            break
+
+        items = resp.json().get("items", [])
+        if not items:
+            print(f" [{datetime.now(beijing_tz).strftime('%H:%M:%S')}] 第{page}页没有结果，结束当前关键词搜索")
+            break
+
+        for item in items:
+            repo = item["full_name"]
+            if repo in seen_repos:
+                continue
+            seen_repos.add(repo)
+            checked_count += 1
+            # 调用仓库处理方法
+            process_repo(repo)
+            time.sleep(0.3) # 增加一点间隔，降低压力
+
         page += 1
         time.sleep(0.8)
     print(f"[{datetime.now(beijing_tz).strftime('%H:%M:%S')}]   └─ 本关键词贡献 {query_links_count} 条有效链接")
