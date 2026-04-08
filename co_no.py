@@ -212,6 +212,7 @@ def extract_nodes_from_text(text):
 
     return cleaned_nodes
 
+
 # ====================== 新增：验证raw链接是否有效且包含有效节点 =================
 def is_valid_node_link(link):
     """
