@@ -216,21 +216,26 @@ def extract_nodes_from_text(text):
 def is_valid_node_link(link):
     """
     验证 raw 链接是否可访问且包含有效节点
-    同时返回所包含的节点
+    返回 (valid, nodes)
     """
     try:
         resp = safe_get(link, timeout=20, operation_name="验证订阅链接")
         if resp is None or resp.status_code != 200:
             return False, None
+
         content = resp.text.strip()
-        if len(content) < 50:    # 内容太短，基本无效
+        if len(content) < 30:    # 内容太短，基本无效
             return False, None
+
         nodes = extract_nodes_from_text(content)
-        if nodes:
-            return True, nodes
+
+        # 返回 True 只要提取到了节点（即使后续去重）
+        return bool(nodes), nodes
+
+    except Exception as e:
+        print(f"   ⚠️ 验证链接时发生异常: {e}")
         return False, None
-    except:
-        return False, None
+
 
 # ====================== 公共方法：处理单个仓库 ======================
 def process_repo(repo):
