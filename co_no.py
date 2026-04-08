@@ -305,10 +305,10 @@ def process_file_tree(repo):
 
                 added_count = after_count - before_count
 
-                if added_count > 0:
+                #if added_count > 0:
                     # 情况1：提取出了新节点
                     #print(f" 📄 文件 {file['path']:.<60} ✅ 提取成功 | 新增 {added_count} 条节点（共 {len(nodes)} 条）")
-                else:
+                #else:
                     # 情况2：提取出了节点，但全部重复
                     #print(f" 📄 文件 {file['path']:.<60} ⚪ 全部重复 | 提取 {len(nodes)} 条节点（均已存在）")
 
