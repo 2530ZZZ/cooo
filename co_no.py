@@ -13,10 +13,7 @@ headers = {
 "User-Agent": "Mozilla/5.0 (compatible; FreeNodesCollector/2.0)"
 }
 
-
-
 # 关键词列表（你可以继续添加或删除）
-
 QUERIES = [
 "free nodes subscription clash v2ray trojan hysteria", "free clash sub github",
 "free v2ray config subscription", "V2RayRoot subscription", "TelegramV2rayCollector",
@@ -39,23 +36,14 @@ QUERIES = [
 ]
 
 # ==================== 全局变量 ====================
-
-
-
-
 all_links = []                    # 最终收集到的所有订阅链接（常规订阅文件）
-
-
-
 seen_repos = set()                # 已检查过的仓库（关键：实现智能跳过重复仓库）
 checked_count = 0                 # 统计总共检查了多少个仓库
 unique_nodes = set()              # 全局去重集合（set自动去重,用于最终生成干净的 no.txt）
-
 beijing_tz = timezone(timedelta(hours=8))     # 所有日志、打印、commit 消息都改成北京时间显示
 
 # ====================== 记录程序开始时间（用于计算总耗时） ======================
 start_time = time.time()
-
 print(f"[{datetime.now(beijing_tz).strftime('%Y-%m-%d %H:%M:%S')}] 🚀 程序启动,开始动态搜索...")
 
 # ====================== 通用限流处理函数 ======================
@@ -74,7 +62,45 @@ def handle_rate_limit(resp, operation_name="未知操作"):
         time.sleep(90)
     return True
 
-# ====================== 增强版节点提取函数（已针对多种情况优化） ======================
+# ====================== 新增：安全请求函数（防止卡死） ======================
+def safe_get(url, timeout=25, max_retries=3, operation_name="请求"):
+    """
+    带重试、超时和限流处理的请求函数
+    目的是防止脚本在 GitHub API 响应慢或限流时卡死
+    """
+    for attempt in range(1, max_retries + 1):
+        try:
+            print(f"[{datetime.now(beijing_tz).strftime('%H:%M:%S')}] 🔄 {operation_name} 第 {attempt}/{max_retries} 次尝试...")
+            resp = requests.get(url, headers=headers, timeout=timeout)
+
+            # 处理限流
+            if handle_rate_limit(resp, operation_name):
+                continue
+
+            if resp.status_code != 200:
+                print(f"[{datetime.now(beijing_tz).strftime('%H:%M:%S')}] {operation_name} 返回状态码: {resp.status_code} (尝试 {attempt}/{max_retries})")
+                time.sleep(5)
+                continue
+
+            print(f"[{datetime.now(beijing_tz).strftime('%H:%M:%S')}] {operation_name} 成功")
+            return resp
+
+        except requests.exceptions.Timeout:
+            print(f"[{datetime.now(beijing_tz).strftime('%H:%M:%S')}] ⚠️ {operation_name} 超时 (尝试 {attempt}/{max_retries})")
+        except requests.exceptions.ConnectionError:
+            print(f"[{datetime.now(beijing_tz).strftime('%H:%M:%S')}] ⚠️ {operation_name} 连接错误 (尝试 {attempt}/{max_retries})")
+        except Exception as e:
+            print(f"[{datetime.now(beijing_tz).strftime('%H:%M:%S')}] ⚠️ {operation_name} 异常: {e} (尝试 {attempt}/{max_retries})")
+
+        # 指数退避等待
+        wait = 8 * attempt
+        print(f"[{datetime.now(beijing_tz).strftime('%H:%M:%S')}] 等待 {wait} 秒后重试...")
+        time.sleep(wait)
+
+    print(f"[{datetime.now(beijing_tz).strftime('%H:%M:%S')}] ❌ {operation_name} 多次失败，已跳过")
+    return None
+
+# ====================== 增强版节点提取函数 ======================
 def extract_nodes_from_text(text):
     """
     增强版节点提取函数 - 支持多种常见格式
@@ -91,17 +117,17 @@ def extract_nodes_from_text(text):
         return nodes
 
     # 1. 提取标准协议链接（vmess://, vless://, trojan://, ss:// 等）
-    protocol_pattern = r'(vmess|vless|trojan|ss|ssr|hysteria2|tuic|reality)://[^\s<>"\']{10,}'
+    protocol_pattern = r'(vmess|vless|trojan|ss|ssr|hysteria2|tuic|reality)://[^\s<>"\']{15,}'
     found = re.findall(protocol_pattern, text, re.IGNORECASE)
     nodes.extend(found)
 
-    # 2. 特别处理 Shadowsocks ss:// 完整 base64 格式（包括带备注）
+    # 2. 特别处理 Shadowsocks ss:// 完整 base64 格式（包括带 # 备注）
     ss_pattern = r'ss://[A-Za-z0-9+/=]+(?:#[^\s<>"\']*)?'
     ss_matches = re.findall(ss_pattern, text, re.IGNORECASE)
     nodes.extend(ss_matches)
 
     # 3. 提取 Clash / YAML 单行节点 - {name: ..., server: ..., type: ...}
-    yaml_single_pattern = r'-\s*\{[^}]*?(?:name|server|port|type|uuid|password|ps|flow|reality-opts)[^}]*\}'
+    yaml_single_pattern = r'-\s*\{[^}]*?(?:name|server|port|type|uuid|password|ps|flow|reality-opts|sni)[^}]*\}'
     yaml_matches = re.findall(yaml_single_pattern, text, re.IGNORECASE | re.DOTALL)
     for match in yaml_matches:
         clean = match.strip()
@@ -122,20 +148,20 @@ def extract_nodes_from_text(text):
     # 匹配 https://raw.githubusercontent.com/用户名/仓库名/... 格式，并提取 repo
     raw_link_pattern = r'https?://raw\.githubusercontent\.com/([^/\s]+/[^/\s]+)'
     raw_matches = re.findall(raw_link_pattern, text, re.IGNORECASE)
-    
+
     for repo in raw_matches:
         repo = repo.strip()
         if not repo or '/' not in repo:
             continue
-            
+
         # 如果这个仓库还没有处理过，就当作正常发现的仓库处理
         if repo not in seen_repos:
-            print(f"   🔗 从 文件 中发现 raw 订阅链接，提取仓库: {repo}，加入处理队列")
+            print(f"   🔗 从文本中发现 raw 订阅链接，提取仓库: {repo}，加入处理队列")
             seen_repos.add(repo)           # 防止重复处理
             checked_count += 1
-            process_repo(repo)             # 直接走完整处理流程（推荐方式）
+            process_repo(repo)             # 走完整处理流程（commit时间 + 文件树）
 
-    # 6. 加强 base64 解码（处理各种嵌套情况）
+    # 6. 加强 base64 解码（处理各种嵌套和复杂情况）
     base64_pattern = r'[A-Za-z0-9+/=]{60,}'
     base64_candidates = re.findall(base64_pattern, text)
 
@@ -172,8 +198,7 @@ def extract_nodes_from_text(text):
             except:
                 pass
 
-    # ==================== 最终清理 ====================
-    # 去重 + 过滤明显无效行
+    # 最终清理：去重 + 过滤明显无效行
     cleaned_nodes = []
     seen = set()
     for n in nodes:
@@ -194,8 +219,8 @@ def is_valid_node_link(link):
     同时返回所包含的节点
     """
     try:
-        resp = requests.get(link, headers=headers, timeout=15)  # 增加超时时间
-        if resp.status_code != 200:
+        resp = safe_get(link, timeout=20, operation_name="验证订阅链接")
+        if resp is None or resp.status_code != 200:
             return False, None
         content = resp.text.strip()
         if len(content) < 50:    # 内容太短，基本无效
@@ -211,20 +236,15 @@ def is_valid_node_link(link):
 def process_repo(repo):
     """公共方法：处理单个仓库（检查更新时间 + 调用文件树处理）"""
     print(f"    [{datetime.now(beijing_tz).strftime('%H:%M:%S')}]     检查仓库 ({checked_count}): {repo}")
-
     commit_url = f"https://api.github.com/repos/{repo}/commits?per_page=1"
-    c_resp = requests.get(commit_url, headers=headers, timeout=10)
-    if handle_rate_limit(c_resp, f"仓库 {repo} commit 查询"):
+    c_resp = safe_get(commit_url, timeout=15, operation_name=f"仓库 {repo} commit 查询")
+    if c_resp is None or c_resp.status_code != 200:
         return
-    if c_resp.status_code != 200:
-        return
-
     try:
         commit_time_str = c_resp.json()[0]["commit"]["committer"]["date"]
         commit_time = datetime.fromisoformat(commit_time_str.replace("Z", "+00:00"))
         if datetime.now(timezone.utc) - commit_time >= timedelta(hours=24):
             return
-
         print(f"      ✓ 发现24h更新仓库 ({checked_count}): {repo}")
         # 调用文件树处理方法
         process_file_tree(repo)
@@ -234,9 +254,12 @@ def process_repo(repo):
 # ====================== 公共方法：处理文件树（核心逻辑） ======================
 def process_file_tree(repo):
     """公共方法：处理仓库的文件树，提取符合条件的订阅文件"""
+    print(f"   [{datetime.now(beijing_tz).strftime('%H:%M:%S')}] 开始处理文件树: {repo}")
+
     tree_url = f"https://api.github.com/repos/{repo}/git/trees/main?recursive=1"
-    t_resp = requests.get(tree_url, headers=headers, timeout=15)
-    if t_resp.status_code != 200:
+    t_resp = safe_get(tree_url, timeout=25, operation_name=f"文件树 {repo}")
+    if t_resp is None or t_resp.status_code != 200:
+        print(f"   [{datetime.now(beijing_tz).strftime('%H:%M:%S')}] 文件树请求失败或超时")
         return
 
     for file in t_resp.json().get("tree", []):
@@ -252,8 +275,8 @@ def process_file_tree(repo):
 
         # 对每个具体文件单独检查最后 commit 时间（解决多层嵌套问题）
         file_commit_url = f"https://api.github.com/repos/{repo}/commits?path={file['path']}&per_page=1"
-        f_resp = requests.get(file_commit_url, headers=headers, timeout=10)
-        if f_resp.status_code != 200:
+        f_resp = safe_get(file_commit_url, timeout=12, operation_name=f"文件 {file['path']} commit 查询")
+        if f_resp is None or f_resp.status_code != 200:
             continue
 
         try:
@@ -266,32 +289,46 @@ def process_file_tree(repo):
 
             # 关键修改：验证 + 提取节点
             valid, nodes = is_valid_node_link(file_url)
+
             if valid and nodes:
                 all_links.append(file_url)
-                unique_nodes.update(nodes)    # ← 这里把节点加入去重集合
+
+                # === 区分三种情况的核心逻辑 ===
+                before_count = len(unique_nodes)
+                unique_nodes.update(nodes)        #把节点加入去重集合
+                after_count = len(unique_nodes)
+
+                added_count = after_count - before_count
+
+                if added_count > 0:
+                    # 情况1：提取出了新节点
+                    print(f" 📄 文件 {file['path']:.<60} ✅ 提取成功 | 新增 {added_count} 条节点（共 {len(nodes)} 条）")
+                else:
+                    # 情况2：提取出了节点，但全部重复
+                    print(f" 📄 文件 {file['path']:.<60} ⚪ 全部重复 | 提取 {len(nodes)} 条节点（均已存在）")
+
                 global query_links_count
                 query_links_count += 1
-                #print(f"      📄 文件 {file_url:.<60} ✅ 有效 | 提取 {len(nodes):>5} 条节点")
+
             else:
-                print(f"      📄 文件 {file_url:.<60} ❌ 无效（无有效节点或无法访问）")
+                # 情况3：没有提取出任何节点
+                print(f" 📄 文件 {file['path']:.<60} ❌ 提取失败 | 没有提取到有效节点（格式不支持或内容无效）")
+
         except Exception as e:
-            print(f"      📄 文件 {file_url:.<60} ❌ 处理异常: {e} (已跳过)")
+            print(f" 📄 文件 {file['path']:.<60} ❌ 处理异常: {e} (已跳过)")
 
 # ====================== 主程序 ======================
 for query_idx, query in enumerate(QUERIES, 1):
     print(f"\n[{datetime.now(beijing_tz).strftime('%H:%M:%S')}] 🔎 开始搜索第 {query_idx}/{len(QUERIES)} 个关键词: {query}")
-
-
     query_links_count = 0    # 当前关键词贡献的链接数量
-
     page = 1
     while page <= 8:
         print(f" [{datetime.now(beijing_tz).strftime('%H:%M:%S')}] 正在请求第 {page} 页...")
         url = f"https://api.github.com/search/repositories?q={query}&sort=updated&order=desc&per_page=100&page={page}"
-        try:
-            resp = requests.get(url, headers=headers, timeout=15)
-            if handle_rate_limit(resp, f"搜索关键词第{page}页"):
-                continue
+        resp = safe_get(url, timeout=30, operation_name=f"搜索关键词第{page}页")
+        if resp is None:
+            print(f"[{datetime.now(beijing_tz).strftime('%H:%M:%S')}] 搜索请求失败，跳过当前页")
+            break
             if resp.status_code != 200:
                 print(f" 搜索失败，第{page}页状态码: {resp.status_code}")
                 break
@@ -299,7 +336,6 @@ for query_idx, query in enumerate(QUERIES, 1):
             if not items:
                 print(f" [{datetime.now(beijing_tz).strftime('%H:%M:%S')}] 第{page}页没有结果，结束当前关键词搜索")
                 break
-
             for item in items:
                 repo = item["full_name"]
                 if repo in seen_repos:
@@ -308,12 +344,9 @@ for query_idx, query in enumerate(QUERIES, 1):
                 checked_count += 1
                 # 调用仓库处理方法
                 process_repo(repo)
-                time.sleep(0.25)
-        except Exception as e:
-            print(f"  关键词 '{query}' 第{page}页发生异常: {e}")
+            time.sleep(0.3)  # 增加一点间隔，降低压力
         page += 1
-        time.sleep(0.6)
-
+        time.sleep(0.8)
     print(f"[{datetime.now(beijing_tz).strftime('%H:%M:%S')}]   └─ 本关键词贡献 {query_links_count} 条有效链接")
 
 # ====================== 最终处理 写入文件 ======================
@@ -331,7 +364,6 @@ if os.path.exists("da_fr_no.txt"):
         old_links = {line.strip() for line in f if line.strip()}
 
 # 把去重后的节点写入 no.txt
-
 if unique_nodes:
     with open("no.txt", "w", encoding="utf-8") as f:
         f.write("\n".join(unique_nodes))
