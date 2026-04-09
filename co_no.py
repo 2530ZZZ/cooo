@@ -1,4 +1,3 @@
-
 import requests
 import re
 import time
@@ -23,23 +22,28 @@ QUERIES = [
     "free trojan nodes",
     "free hysteria nodes",
     "free vless nodes",
+    "free hysteria2 nodes",
+    "free tuic nodes",
+    "free reality nodes",
 
     # 订阅相关
     "clash subscription github",
     "v2ray subscription github",
     "trojan subscription github",
     "hysteria2 subscription",
+    "singbox subscription",
 
     # 中文高频词
     "免费节点",
     "免费clash订阅",
     "免费v2ray订阅",
     "免费trojan订阅",
+    "免费hysteria订阅",
     "免费机场节点",
     "免费节点订阅",
 
-    # 混合组合（推荐写法）
-    "免费 (clash OR v2ray OR trojan OR hysteria) (订阅 OR 节点)",
+    # 混合组合
+    "免费 (clash OR v2ray OR trojan OR hysteria OR hysteria2 OR tuic OR reality) (订阅 OR 节点)",
     "clash (订阅 OR 配置 OR nodes) github",
     "v2ray (订阅 OR 配置) github",
 
@@ -51,9 +55,9 @@ QUERIES = [
     "proxy collector github",
     "v2ray collector",
     "shadowrocket nodes",
-    "hiddify nodes"
+    "hiddify nodes",
 
-    "free (nodes OR subscription OR clash OR v2ray OR trojan OR hysteria",
+    "free (nodes OR subscription OR clash OR v2ray OR trojan OR hysteria OR hysteria2)",
     "free clash sub github",
     "free v2ray config subscription",
     "V2RayRoot subscription",
@@ -141,18 +145,12 @@ def safe_get(url, timeout=25, max_retries=3, operation_name="请求"):
     print(f"[{datetime.now(beijing_tz).strftime('%H:%M:%S')}] ❌ {operation_name} 多次失败，已跳过")
     return None
 
-# ====================== 增强版节点提取函数 ======================
+# ====================== 增强版节点提取函数（协议覆盖全面版） ======================
 def extract_nodes_from_text(text):
     """
-
-
-
-
-
-
-    增强版节点提取函数 - 支持多种常见格式
-    支持情况：
-    1. 标准协议链接：vmess:// vless:// trojan:// ss:// ssr:// hysteria2:// tuic:// reality://
+    增强版节点提取函数 - 支持几乎所有协议和格式
+    支持协议和格式：
+    - vmess:// vless:// trojan:// ss:// ssr:// hysteria:// hysteria2:// tuic:// reality://
     2. Shadowsocks ss:// 完整 base64 格式（包括带 # 备注）
     3. Clash / Sing-box YAML 单行节点：- {name: ..., server: ..., type: vless, ...}
     4. Clash 多行 proxies 格式
@@ -165,7 +163,7 @@ def extract_nodes_from_text(text):
 
     # 1. 提取标准协议链接（vmess://, vless://, trojan://, ss:// 等）
 
-    protocol_pattern = r'(vmess|vless|trojan|ss|ssr|hysteria2|tuic|reality)://[^\s<>"\']{15,}'
+    protocol_pattern = r'(vmess|vless|trojan|ss|ssr|hysteria|hysteria2|tuic|reality)://[^\s<>"\']{15,}'
     found = re.findall(protocol_pattern, text, re.IGNORECASE)
     nodes.extend(found)
 
@@ -175,10 +173,8 @@ def extract_nodes_from_text(text):
     ss_matches = re.findall(ss_pattern, text, re.IGNORECASE)
     nodes.extend(ss_matches)
 
-    # 3. 提取 Clash / YAML 单行节点 - {name: ..., server: ..., type: ...}
+    # 3. 提取 Clash / Sing-box YAML 单行节点 - {name: ..., server: ..., type: ...}
     yaml_single_pattern = r'-\s*\{[^}]*?(?:name|server|port|type|uuid|password|ps|flow|reality-opts|sni|fp|client-fingerprint)[^}]*\}'
-
-
     yaml_matches = re.findall(yaml_single_pattern, text, re.IGNORECASE | re.DOTALL)
     for match in yaml_matches:
         clean = match.strip()
@@ -234,7 +230,7 @@ def extract_nodes_from_text(text):
                 line = line.strip()
                 if not line:
                     continue
-                if line.startswith(('vmess://', 'vless://', 'trojan://', 'ss://', 'ssr://', 'hysteria2://', 'tuic://')):
+                if line.startswith(('vmess://', 'vless://', 'trojan://', 'ss://', 'ssr://', 'hysteria://', 'hysteria2://', 'tuic://', 'reality://')):
                     nodes.append(line)
                 elif '{' in line and ('type:' in line or 'uuid:' in line or 'password:' in line):
                     nodes.append(line)
@@ -248,7 +244,7 @@ def extract_nodes_from_text(text):
                 decoded = base64.b64decode(clean, validate=False).decode('utf-8', errors='ignore')
                 for line in decoded.splitlines():
                     line = line.strip()
-                    if line.startswith(('vmess://', 'vless://', 'trojan://', 'ss://')):
+                    if line.startswith(('vmess://', 'vless://', 'trojan://', 'ss://', 'hysteria2://', 'tuic://')):
                         nodes.append(line)
             except:
                 pass
@@ -330,7 +326,7 @@ def process_file_tree(repo):
         # 把 README.md 也当作普通文件处理
         if not fname.endswith((".yaml", ".yml", ".txt", ".json", ".base64", ".list", "readme.md")):
             continue
-        if not any(k in fname for k in ["clash", "v2ray", "trojan", "hysteria","hysteria2", "vless", "vmess", "ss","ssr","tuic", "sub", "proxy", "node", "base64", "config", "list", "readme"]):
+        if not any(k in fname for k in ["clash", "v2ray", "trojan", "hysteria", "hysteria2", "vless", "vmess", "ss", "ssr", "tuic", "reality", "sub", "proxy", "node", "base64", "config", "list", "readme"]):
             continue
 
         # 对每个具体文件单独检查最后 commit 时间（解决多层嵌套问题）
