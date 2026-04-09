@@ -123,7 +123,7 @@ jobs:
 
 
 
-          # 添加文件（同时提交 da_fr_no.txt 和 no.txt 和 alive.txt 和 fi_no.txt）
+          # 添加文件（同时提交 no_li.txt 和 no.txt 和 alive.txt 和 fi_no.txt）
           git add no_li.txt
           git add no.txt
           git add alive.txt
