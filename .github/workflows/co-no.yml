@@ -1,6 +1,6 @@
 # ==================== 工作流名称 ====================
 # 这个名称会显示在 GitHub Actions 页面中
-name: 每6小时动态搜集 + subs-check测活测速 + sing-box精准延迟 + 输出标准节点
+name: 每6小时动态搜集 + subs-check精细测活测速 + sing-box延迟 + 重命名输出标准节点
 
 # ==================== 触发条件 ====================
 on:
@@ -56,7 +56,6 @@ jobs:
         # 安装 co_no.py 脚本需要的 requests 库
 
 
-
       # 步骤4：执行我们的搜集脚本
       - name: 运行动态搜索脚本（生成 no.txt + da_fr_no.txt）
         env:
@@ -67,7 +66,6 @@ jobs:
         # 执行我们编写的 co_no.py 脚本
 
       # ==================== 第一阶段：subs-check 批量测活 + 测速 ====================
-
       - name: 下载并运行 subs-check（20万节点本地高效测试）
         run: |
           echo "🚀 开始下载最新 subs-check..."
@@ -86,20 +84,34 @@ jobs:
             "speed-min": 1024,               # 测速最低值（单位：KB/s）
             "latency-max": 800,              # 延迟最大值（单位：ms  超过就丢弃）
             "target": "none",                # 输出标准协议链接格式
+
+
+
+
+
+
+
+
             "log-level": "info"
+            "remove-duplicates": true
           }
           EOF
 
           echo "📊 开始对 no.txt 进行测活 + 测速 + 过滤（速度>=1MB/s，延迟<=800ms）..."
+
           ./subs-check \
+
+
+            -config subs-check-config.json
             -input no.txt \            #输入文件
             -output alive.txt \        #输出文件
-
             -speed true \              # 开启真实测速
             -target none \             # 不输出 sing-box 配置，保持【标准协议链接】
             -log-level info            # 详细日志
 
           echo "✅ subs-check 完成！存活 + 测速后的标准节点已保存到 alive.txt"
+
+
 
 
 
