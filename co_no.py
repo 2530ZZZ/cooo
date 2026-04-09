@@ -116,7 +116,7 @@ def safe_get(url, timeout=25, max_retries=3, operation_name="请求"):
     """
     for attempt in range(1, max_retries + 1):
         try:
-            print(f"[{datetime.now(beijing_tz).strftime('%H:%M:%S')}] 🔄 {operation_name} 第 {attempt}/{max_retries} 次尝试...")
+            #print(f"[{datetime.now(beijing_tz).strftime('%H:%M:%S')}] 🔄 {operation_name} 第 {attempt}/{max_retries} 次尝试...")
             resp = requests.get(url, headers=headers, timeout=timeout)
 
             # 处理限流
@@ -128,7 +128,7 @@ def safe_get(url, timeout=25, max_retries=3, operation_name="请求"):
                 time.sleep(5)
                 continue
 
-            print(f"[{datetime.now(beijing_tz).strftime('%H:%M:%S')}] {operation_name} 成功")
+            #print(f"[{datetime.now(beijing_tz).strftime('%H:%M:%S')}] {operation_name} 成功")
             return resp
 
         except requests.exceptions.Timeout:
@@ -212,11 +212,8 @@ def extract_nodes_from_text(text):
         if repo not in seen_repos:
             print(f"   🔗 从文本中发现 raw 订阅链接，提取仓库: {repo}，加入处理队列")
             seen_repos.add(repo)           # 防止重复处理
-
             checked_count += 1
-
             process_repo(repo)             # 走完整处理流程（commit时间 + 文件树）
-
 
     # 6. 加强 base64 解码（处理各种嵌套和复杂情况）
     base64_pattern = r'[A-Za-z0-9+/=]{60,}'
@@ -307,7 +304,7 @@ def process_repo(repo):
         commit_time = datetime.fromisoformat(commit_time_str.replace("Z", "+00:00"))
         if datetime.now(timezone.utc) - commit_time >= timedelta(hours=24):
             return
-        print(f" ✓ 发现24h更新仓库 ({checked_count}): {repo}")
+        print(f" ✓ 发现新的24h更新仓库 ({checked_count}): {repo}")
         # 调用文件树处理方法
         process_file_tree(repo)
     except Exception as e:
