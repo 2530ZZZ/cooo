@@ -1,11 +1,12 @@
 # ==================== 工作流名称 ====================
 # 这个名称会显示在 GitHub Actions 页面中
-name: 每6小时动态搜集 + subs-check精细测活测速 + sing-box延迟 + 重命名输出标准节点
+name: 动态搜集 + su-ch精细测活测速 + si-bo延迟 + 重命名输出标准jd
 
 # ==================== 触发条件 ====================
 on:
   # 北京时间 00:00、06:00、12:00、18:00 执行（每6小时一次，从0点开始）
   schedule:
+
 
     - cron: '0 0 1 * *'   # UTC 04:00,10:00,16:00,22:00 → 北京时间 12:00,18:00,00:00,06:00
 
@@ -20,11 +21,15 @@ jobs:
     runs-on: ubuntu-latest
 
 
+
+
+
     # ==================== 环境变量 ====================
     # FORCE_JAVASCRIPT_ACTIONS_TO_NODE24=true
     # 强制 GitHub Actions 使用 Node.js 24，解决 Node.js 20 已弃用警告
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
       NODE_NO_WARNINGS: "1"           # 隐藏弃用警告，让日志更干净
 
     # 关键：声明需要写权限（必须开启，否则 git push 会 403）
@@ -44,13 +49,16 @@ jobs:
         uses: actions/setup-python@v5
         with:
 
+
           python-version: '3.12'     # 指定使用 Python 3.12
+
 
 
       # 步骤3：安装 Python 依赖
       - name: 安装依赖（requests 库）
         run: pip install requests
         # 安装 co_no.py 脚本需要的 requests 库
+
 
 
       # 步骤4：执行我们的搜集脚本
@@ -62,16 +70,24 @@ jobs:
         run: python co_no.py
         # 执行我们编写的 co_no.py 脚本
 
+
       # ==================== 第一阶段：subs-check 批量测活 + 测速 ====================
       - name: 下载并运行 subs-check（20万节点本地高效测试）
         run: |
-          echo "🚀 开始下载最新 subs-check..."
-          curl -L -o subs-check https://github.com/beck-8/subs-check/releases/latest/download/subs-check_linux_amd64
+          echo "🚀 开始下载最新 subs-check 二进制文件..."
+          
+          # 强制使用最新稳定版本，并增加重试机制
+          curl -L --fail --retry 3 --retry-delay 5 \
+            -o subs-check \
+            https://github.com/beck-8/subs-check/releases/latest/download/subs-check_linux_amd64
+          
+          # 检查文件是否下载成功且有执行权限
+          ls -l subs-check
           chmod +x subs-check
+          
+          echo "📊 创建 subs-check 配置文件（支持 speed-min 和 latency-max 过滤）..."
+          cat > subs-check-config.json << 'EOF'
 
-          echo "📊 开始对 no.txt (20万+节点) 进行测活 + 测速..."
-          # 创建配置文件，实现你想要的过滤
-          cat > subs-check-config.json << EOF
           {
             "concurrency": 50,               # 总并发数
             "timeout": 12,                   # 单个节点所用总时间限制(秒)
@@ -81,6 +97,14 @@ jobs:
             "speed-min": 1024,               # 测速最低值（单位：KB/s）
             "latency-max": 800,              # 延迟最大值（单位：ms  超过就丢弃）
             "target": "none",                # 输出标准协议链接格式
+
+
+
+
+
+
+
+
             "log-level": "info"
             "remove-duplicates": true
           }
@@ -88,15 +112,23 @@ jobs:
 
           echo "📊 开始对 no.txt 进行测活 + 测速 + 过滤（速度>=1MB/s，延迟<=800ms）..."
 
+
+
           ./subs-check \
-            -config subs-check-config.json
+
+
+
             -input no.txt \            #输入文件
             -output alive.txt \        #输出文件
             -speed true \              # 开启真实测速
             -target none \             # 不输出 sing-box 配置，保持【标准协议链接】
-            -log-level info            # 详细日志
+            -config subs-check-config.json      #引入上面的json配置
 
-          echo "✅ subs-check 完成！存活 + 测速后的标准节点已保存到 alive.txt"
+          echo "✅ subs-check 执行完成！存活 + 测速后的标准节点已保存到 alive.txt"
+          echo "   alive.txt 文件大小: $(du -h alive.txt | cut -f1)"
+
+
+
 
 
       # ==================== 第二阶段：sing-box 精准延迟测试 ====================
@@ -108,11 +140,14 @@ jobs:
           mv sing-box-*/sing-box ./sing-box
           chmod +x sing-box
 
-          echo "📈 sing-box 开始对 alive.txt 进行 URLTest 精准延迟测试..."
+
+
+          echo "📈 sing-box 开始对 alive.txt 进行 URLTest 精准延迟测试 + 重命名"
 
           python fi_no.py alive.txt fi_no.txt
 
-          echo "✅ 最终标准协议节点已生成 → fi_no.txt（按延迟排序）"
+
+          echo "✅ 最终标准协议节点已生成 → fi_no.txt"
 
 
       # ==================== 提交所有结果 ====================
@@ -120,6 +155,7 @@ jobs:
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
 
 
 
@@ -131,7 +167,7 @@ jobs:
 
           # 提交（如果文件没有变化则不提交）
           # 使用北京时间（UTC+8）作为提交时间
-          git commit -m "自动更新 + sub-ck测活测速 + si-bx精准延迟 - $(date -u -d '+8 hours' +'%Y-%m-%d %H:%M:%S CST')" || echo "No changes to commit"
+          git commit -m "自动更新 + su-ch测活测速 + si-bo精准延迟 - $(date -u -d '+8 hours' +'%Y-%m-%d %H:%M:%S CST')" || echo "No changes to commit"
 
           # 推送到仓库
           git push
