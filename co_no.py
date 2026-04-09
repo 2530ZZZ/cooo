@@ -1,3 +1,4 @@
+
 import requests
 import re
 import time
@@ -15,8 +16,48 @@ headers = {
 
 # 关键词列表（你可以继续添加或删除）
 QUERIES = [
-"free nodes subscription clash v2ray trojan hysteria", "free clash sub github",
-"free v2ray config subscription", "V2RayRoot subscription", "TelegramV2rayCollector",
+    # 基础高频组合
+    "free nodes",
+    "free clash nodes",
+    "free v2ray nodes",
+    "free trojan nodes",
+    "free hysteria nodes",
+    "free vless nodes",
+
+    # 订阅相关
+    "clash subscription github",
+    "v2ray subscription github",
+    "trojan subscription github",
+    "hysteria2 subscription",
+
+    # 中文高频词
+    "免费节点",
+    "免费clash订阅",
+    "免费v2ray订阅",
+    "免费trojan订阅",
+    "免费机场节点",
+    "免费节点订阅",
+
+    # 混合组合（推荐写法）
+    "免费 (clash OR v2ray OR trojan OR hysteria) (订阅 OR 节点)",
+    "clash (订阅 OR 配置 OR nodes) github",
+    "v2ray (订阅 OR 配置) github",
+
+    # 其他常见变体
+    "base64 subscription",
+    "clash meta free",
+    "singbox free nodes",
+    "airport free nodes",
+    "proxy collector github",
+    "v2ray collector",
+    "shadowrocket nodes",
+    "hiddify nodes"
+
+    "free (nodes OR subscription OR clash OR v2ray OR trojan OR hysteria",
+    "free clash sub github",
+    "free v2ray config subscription",
+    "V2RayRoot subscription",
+    "TelegramV2rayCollector",
 "ProxyCollector", "V2RAY-CLASH-BASE64-Subscription", "free proxy nodes sub trojan hysteria2",
 "free nodes clash yaml", "v2ray subscription links github", "free clash subscribe",
 "proxy collector v2ray", "free v2ray nodes subscription", "clash sub github",
@@ -103,6 +144,12 @@ def safe_get(url, timeout=25, max_retries=3, operation_name="请求"):
 # ====================== 增强版节点提取函数 ======================
 def extract_nodes_from_text(text):
     """
+
+
+
+
+
+
     增强版节点提取函数 - 支持多种常见格式
     支持情况：
     1. 标准协议链接：vmess:// vless:// trojan:// ss:// ssr:// hysteria2:// tuic:// reality://
@@ -117,17 +164,21 @@ def extract_nodes_from_text(text):
         return nodes
 
     # 1. 提取标准协议链接（vmess://, vless://, trojan://, ss:// 等）
+
     protocol_pattern = r'(vmess|vless|trojan|ss|ssr|hysteria2|tuic|reality)://[^\s<>"\']{15,}'
     found = re.findall(protocol_pattern, text, re.IGNORECASE)
     nodes.extend(found)
 
     # 2. 特别处理 Shadowsocks ss:// 完整 base64 格式（包括带 # 备注）
+
     ss_pattern = r'ss://[A-Za-z0-9+/=]+(?:#[^\s<>"\']*)?'
     ss_matches = re.findall(ss_pattern, text, re.IGNORECASE)
     nodes.extend(ss_matches)
 
     # 3. 提取 Clash / YAML 单行节点 - {name: ..., server: ..., type: ...}
-    yaml_single_pattern = r'-\s*\{[^}]*?(?:name|server|port|type|uuid|password|ps|flow|reality-opts|sni)[^}]*\}'
+    yaml_single_pattern = r'-\s*\{[^}]*?(?:name|server|port|type|uuid|password|ps|flow|reality-opts|sni|fp|client-fingerprint)[^}]*\}'
+
+
     yaml_matches = re.findall(yaml_single_pattern, text, re.IGNORECASE | re.DOTALL)
     for match in yaml_matches:
         clean = match.strip()
@@ -136,6 +187,7 @@ def extract_nodes_from_text(text):
             nodes.append(clean)
 
     # 4. 提取 Clash 多行 proxies 格式（从 name: 开始到下一个 name: 或结尾）
+
     yaml_multi_pattern = r'-\s*name:.*?(?=-\s*name:|\Z)'
     multi_matches = re.findall(yaml_multi_pattern, text, re.IGNORECASE | re.DOTALL | re.MULTILINE)
     for match in multi_matches:
@@ -144,6 +196,7 @@ def extract_nodes_from_text(text):
             clean = re.sub(r'\s+', ' ', clean)
             nodes.append(clean)
 
+
     # 5. 提取 文件 中直接写的 raw 订阅链接（重要增强）
     # 匹配 https://raw.githubusercontent.com/用户名/仓库名/... 格式，并提取 repo
     raw_link_pattern = r'https?://raw\.githubusercontent\.com/([^/\s]+/[^/\s]+)'
@@ -151,6 +204,7 @@ def extract_nodes_from_text(text):
 
     for repo in raw_matches:
         repo = repo.strip()
+
         if not repo or '/' not in repo:
             continue
 
@@ -160,6 +214,7 @@ def extract_nodes_from_text(text):
             seen_repos.add(repo)           # 防止重复处理
             checked_count += 1
             process_repo(repo)             # 走完整处理流程（commit时间 + 文件树）
+
 
     # 6. 加强 base64 解码（处理各种嵌套和复杂情况）
     base64_pattern = r'[A-Za-z0-9+/=]{60,}'
@@ -211,7 +266,6 @@ def extract_nodes_from_text(text):
         cleaned_nodes.append(n)
 
     return cleaned_nodes
-
 
 # ====================== 新增：验证raw链接是否有效且包含有效节点 =================
 def is_valid_node_link(link):
@@ -276,7 +330,7 @@ def process_file_tree(repo):
         # 把 README.md 也当作普通文件处理
         if not fname.endswith((".yaml", ".yml", ".txt", ".json", ".base64", ".list", "readme.md")):
             continue
-        if not any(k in fname for k in ["clash", "v2ray", "trojan", "hysteria", "vless", "vmess", "ss", "sub", "proxy", "node", "base64", "config", "list", "readme"]):
+        if not any(k in fname for k in ["clash", "v2ray", "trojan", "hysteria","hysteria2", "vless", "vmess", "ss","ssr","tuic", "sub", "proxy", "node", "base64", "config", "list", "readme"]):
             continue
 
         # 对每个具体文件单独检查最后 commit 时间（解决多层嵌套问题）
@@ -328,35 +382,29 @@ for query_idx, query in enumerate(QUERIES, 1):
     print(f"\n[{datetime.now(beijing_tz).strftime('%H:%M:%S')}] 🔎 开始搜索第 {query_idx}/{len(QUERIES)} 个关键词: {query}")
     query_links_count = 0    # 当前关键词贡献的链接数量
     page = 1
-    while page <= 8:
+    while page <= 10:
         print(f" [{datetime.now(beijing_tz).strftime('%H:%M:%S')}] 正在请求第 {page} 页...")
         url = f"https://api.github.com/search/repositories?q={query}&sort=updated&order=desc&per_page=100&page={page}"
-
         resp = safe_get(url, timeout=30, operation_name=f"搜索关键词第{page}页")
         if resp is None:
             print(f"[{datetime.now(beijing_tz).strftime('%H:%M:%S')}] 搜索请求失败，跳过当前页")
             break
-
-
-        if resp.status_code != 200:
-            print(f" 搜索失败，第{page}页状态码: {resp.status_code}")
-            break
-
-        items = resp.json().get("items", [])
-        if not items:
-            print(f" [{datetime.now(beijing_tz).strftime('%H:%M:%S')}] 第{page}页没有结果，结束当前关键词搜索")
-            break
-
-        for item in items:
-            repo = item["full_name"]
-            if repo in seen_repos:
-                continue
-            seen_repos.add(repo)
-            checked_count += 1
-            # 调用仓库处理方法
-            process_repo(repo)
-            time.sleep(0.3) # 增加一点间隔，降低压力
-
+            if resp.status_code != 200:
+                print(f" 搜索失败，第{page}页状态码: {resp.status_code}")
+                break
+            items = resp.json().get("items", [])
+            if not items:
+                print(f" [{datetime.now(beijing_tz).strftime('%H:%M:%S')}] 第{page}页没有结果，结束当前关键词搜索")
+                break
+            for item in items:
+                repo = item["full_name"]
+                if repo in seen_repos:
+                    continue
+                seen_repos.add(repo)
+                checked_count += 1
+                # 调用仓库处理方法
+                process_repo(repo)
+            time.sleep(0.3)  # 增加一点间隔，降低压力
         page += 1
         time.sleep(0.8)
     print(f"[{datetime.now(beijing_tz).strftime('%H:%M:%S')}]   └─ 本关键词贡献 {query_links_count} 条有效链接")
@@ -432,9 +480,6 @@ print(f"   旧 da_fr_no.txt 链接总数 : {len(old_links):,} 条")
 print(f"   新增链接                 : {len(added_links):,} 条 (+{len(added_links)})")
 print(f"   去除链接                 : {len(removed_links):,} 条 (-{len(removed_links)})")
 print(f"   保留链接（新旧都有）     : {len(kept_links):,} 条")
-
-
-
 
 
 # ====================== 最终总结日志 ======================
