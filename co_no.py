@@ -406,8 +406,8 @@ for query_idx, query in enumerate(QUERIES, 1):
 
 
 
-       items = resp.json().get("items", [])
-       if not items:
+        items = resp.json().get("items", [])
+        if not items:
 
             print(f" [{datetime.now(beijing_tz).strftime('%H:%M:%S')}] 第{page}页没有结果，结束当前关键词搜索")
             break
