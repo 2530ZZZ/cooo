@@ -294,7 +294,7 @@ def is_valid_node_link(link):
 # ====================== 公共方法：处理单个仓库 ======================
 def process_repo(repo):
     """公共方法：处理单个仓库（检查更新时间 + 调用文件树处理）"""
-    print(f" [{datetime.now(beijing_tz).strftime('%H:%M:%S')}] 检查仓库 ({checked_count}): {repo}")
+    #print(f" [{datetime.now(beijing_tz).strftime('%H:%M:%S')}] 检查仓库 ({checked_count}): {repo}")
     commit_url = f"https://api.github.com/repos/{repo}/commits?per_page=1"
     c_resp = safe_get(commit_url, timeout=15, operation_name=f"仓库 {repo} commit 查询")
     if c_resp is None or c_resp.status_code != 200:
