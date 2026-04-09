@@ -401,23 +401,12 @@ for query_idx, query in enumerate(QUERIES, 1):
         if resp.status_code != 200:
             print(f" 搜索失败，第{page}页状态码: {resp.status_code}")
             break
-
-
-
-
-
         items = resp.json().get("items", [])
         if not items:
-
             print(f" [{datetime.now(beijing_tz).strftime('%H:%M:%S')}] 第{page}页没有结果，结束当前关键词搜索")
             break
         print(f"[{datetime.now(beijing_tz).strftime('%H:%M:%S')}] 本页找到 {len(items)} 个仓库，开始处理...")
         for item in items:
-
-
-
-
-
             repo = item["full_name"]
             if repo in seen_repos:
                 continue
@@ -430,11 +419,11 @@ for query_idx, query in enumerate(QUERIES, 1):
         page += 1
         time.sleep(0.8)   # 翻页间隔，降低 API 压力
 
-
     print(f"[{datetime.now(beijing_tz).strftime('%H:%M:%S')}] └─ 本关键词贡献 {query_links_count} 条有效链接")
 
-# ====================== 最终处理 写入文件 ======================
 
+
+# ====================== 最终处理 写入文件 ======================
 # 【关键修复】先读取旧文件做对比，再写入新文件
 
 old_nodes = set()
@@ -443,8 +432,8 @@ if os.path.exists("no.txt"):
         old_nodes = {line.strip() for line in f if line.strip()}
 
 old_links = set()
-if os.path.exists("da_fr_no.txt"):
-    with open("da_fr_no.txt", "r", encoding="utf-8") as f:
+if os.path.exists("no_li.txt"):
+    with open("no_li.txt", "r", encoding="utf-8") as f:
         old_links = {line.strip() for line in f if line.strip()}
 
 # 把去重后的节点写入 no.txt
@@ -463,7 +452,7 @@ all_links.append(no_txt_raw_url)
 # 全局去重常规链接
 all_links = list(dict.fromkeys(all_links))
 
-with open("da_fr_no.txt", "w", encoding="utf-8") as f:
+with open("no_li.txt", "w", encoding="utf-8") as f:
     f.write("\n".join(all_links))
 
 
@@ -491,16 +480,16 @@ print(f" 去除节点 : {len(removed_nodes):,} 条 (-{len(removed_nodes)})")
 print(f" 保留节点（新旧都有） : {len(kept_nodes):,} 条")
 
 
-# ====================== da_fr_no.txt 新旧链接对比 ======================
+# ====================== no_li.txt 新旧链接对比 ======================
 
 new_links = set(all_links)
 added_links = new_links - old_links
 removed_links = old_links - new_links
 kept_links = new_links & old_links
 
-print(f"\n🔗 da_fr_no.txt 链接对比报告")
-print(f" 新 da_fr_no.txt 链接总数 : {len(new_links):,} 条")
-print(f" 旧 da_fr_no.txt 链接总数 : {len(old_links):,} 条")
+print(f"\n🔗 no_li.txt 链接对比报告")
+print(f" 新 no_li.txt 链接总数 : {len(new_links):,} 条")
+print(f" 旧 no_li.txt 链接总数 : {len(old_links):,} 条")
 print(f" 新增链接 : {len(added_links):,} 条 (+{len(added_links)})")
 print(f" 去除链接 : {len(removed_links):,} 条 (-{len(removed_links)})")
 print(f" 保留链接（新旧都有） : {len(kept_links):,} 条")
@@ -511,4 +500,4 @@ print(f"\n🎉 [{datetime.now(beijing_tz).strftime('%Y-%m-%d %H:%M:%S')}] 搜集
 print(f" 共检查仓库数量: {len(seen_repos):,} 个")
 print(f" 最终获得独特订阅链接: {len(all_links):,} 条")
 print(f" no.txt 中去重后节点数量: {len(unique_nodes):,} 条")
-print(f"[{datetime.now(beijing_tz).strftime('%H:%M:%S')}] ✅ 已保存 da_fr_no.txt 和 no.txt 文件")
+print(f"[{datetime.now(beijing_tz).strftime('%H:%M:%S')}] ✅ 已保存 no_li.txt 和 no.txt 文件")
