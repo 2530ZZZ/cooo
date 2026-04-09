@@ -1,84 +1,111 @@
 import sys
-import json
-import subprocess
+import re
 import time
 from datetime import datetime, timedelta, timezone
 
 beijing_tz = timezone(timedelta(hours=8))
 
 if len(sys.argv) < 3:
-    print("用法: python process_final_nodes.py <alive.txt> <final_nodes.txt>")
+    print(f"[{datetime.now(beijing_tz).strftime('%H:%M:%S')}] ❌ 用法错误: python fi_no.py <alive.txt> <fi_no.txt>")
     sys.exit(1)
 
 input_file = sys.argv[1]
 output_file = sys.argv[2]
 
-print(f"[{datetime.now(beijing_tz).strftime('%H:%M:%S')}] 🔄 读取 subs-check 输出的存活节点...")
+print(f"[{datetime.now(beijing_tz).strftime('%Y-%m-%d %H:%M:%S')}] 🚀 开始处理最终节点...")
+
+# 读取 subs-check 输出的存活节点（标准协议格式）
 with open(input_file, "r", encoding="utf-8") as f:
     nodes = [line.strip() for line in f if line.strip()]
 
 print(f"[{datetime.now(beijing_tz).strftime('%H:%M:%S')}] 📊 共加载 {len(nodes):,} 个存活节点（已测速）")
 
-# 限制 sing-box 测试数量，避免卡死（推荐 3000~5000）
+# 限制数量，防止 sing-box 或后续处理卡死（推荐 3000~5000）
 MAX_NODES = 5000
 if len(nodes) > MAX_NODES:
     nodes = nodes[:MAX_NODES]
-    print(f"[{datetime.now(beijing_tz).strftime('%H:%M:%S')}] ⚠️ 节点过多，自动截取前 {MAX_NODES} 个进行 sing-box 延迟测试")
+    print(f"[{datetime.now(beijing_tz).strftime('%H:%M:%S')}] ⚠️ 节点过多，自动截取前 {MAX_NODES} 个")
 
-# ==================== 生成 sing-box 配置（用于 URLTest） ====================
-config = {
-    "log": {"level": "warn"},
-    "outbounds": [],
-    "outbound": {
-        "type": "urltest",
-        "tag": "auto",
-        "outbounds": [],
-        "url": "https://www.gstatic.com/generate_204",   # 轻量测试地址
-        "interval": "15s",      # 测试间隔
-        "tolerance": 50         # 延迟容差
+# ====================== 国家识别函数 ======================
+def extract_country(node_url: str) -> str:
+    """从节点链接、备注、域名中智能提取国家/地区（覆盖 30+ 常见地区）"""
+    if not node_url:
+        return '🌍 UN'
+
+    upper = node_url.upper()
+
+    # ==================== 1. 常见国家/地区映射（最高优先级） ====================
+    country_map = {
+        'US': '🇺🇸 US', 'USA': '🇺🇸 US', 'UNITED STATES': '🇺🇸 US',
+        'JP': '🇯🇵 JP', 'JAPAN': '🇯🇵 JP',
+        'SG': '🇸🇬 SG', 'SINGAPORE': '🇸🇬 SG',
+        'HK': '🇭🇰 HK', 'HONG KONG': '🇭🇰 HK',
+        'TW': '🇹🇼 TW', 'TAIWAN': '🇹🇼 TW',
+        'KR': '🇰🇷 KR', 'KOREA': '🇰🇷 KR', 'SOUTH KOREA': '🇰🇷 KR',
+        'DE': '🇩🇪 DE', 'GERMANY': '🇩🇪 DE',
+        'FR': '🇫🇷 FR', 'FRANCE': '🇫🇷 FR',
+        'GB': '🇬🇧 GB', 'UK': '🇬🇧 GB', 'UNITED KINGDOM': '🇬🇧 GB',
+        'CA': '🇨🇦 CA', 'CANADA': '🇨🇦 CA',
+        'AU': '🇦🇺 AU', 'AUSTRALIA': '🇦🇺 AU',
+        'RU': '🇷🇺 RU', 'RUSSIA': '🇷🇺 RU',
+        'BR': '🇧🇷 BR', 'BRAZIL': '🇧🇷 BR',
+        'IN': '🇮🇳 IN', 'INDIA': '🇮🇳 IN',
+        'NL': '🇳🇱 NL', 'NETHERLANDS': '🇳🇱 NL',
+        'TR': '🇹🇷 TR', 'TURKEY': '🇹🇷 TR',
+        'ID': '🇮🇩 ID', 'INDONESIA': '🇮🇩 ID',
+        'MY': '🇲🇾 MY', 'MALAYSIA': '🇲🇾 MY',
+        'TH': '🇹🇭 TH', 'THAILAND': '🇹🇭 TH',
+        'VN': '🇻🇳 VN', 'VIETNAM': '🇻🇳 VN',
+        'IT': '🇮🇹 IT', 'ITALY': '🇮🇹 IT',
+        'ES': '🇪🇸 ES', 'SPAIN': '🇪🇸 ES',
+        'SE': '🇸🇪 SE', 'SWEDEN': '🇸🇪 SE',
+        'FI': '🇫🇮 FI', 'FINLAND': '🇫🇮 FI',
+        'PL': '🇵🇱 PL', 'POLAND': '🇵🇱 PL',
     }
-}
 
-for i, node in enumerate(nodes):
-    config["outbounds"].append({
-        "tag": f"node_{i}",
-        "type": "urltest",      # 让 sing-box 自动测试
-        "outbounds": [node]
-    })
-    config["outbound"]["outbounds"].append(f"node_{i}")
+    # 先从备注或名称中精确匹配
+    for code, flag in country_map.items():
+        if code in upper or f" {code} " in f" {upper} " or f"#{code}" in upper or f"-{code}" in upper:
+            return flag
 
-with open("temp_singbox_config.json", "w", encoding="utf-8") as f:
-    json.dump(config, f, indent=2)
+    # ==================== 2. 域名后缀判断 ====================
+    domain_patterns = {
+        r'\.us|\.com|\.net|\.io': '🇺🇸 US',
+        r'\.jp|\.co\.jp': '🇯🇵 JP',
+        r'\.sg|\.com\.sg': '🇸🇬 SG',
+        r'\.hk|\.com\.hk': '🇭🇰 HK',
+        r'\.tw|\.com\.tw': '🇹🇼 TW',
+        r'\.kr|\.co\.kr': '🇰🇷 KR',
+        r'\.de': '🇩🇪 DE',
+        r'\.fr': '🇫🇷 FR',
+        r'\.uk|\.co\.uk': '🇬🇧 GB',
+        r'\.ca': '🇨🇦 CA',
+        r'\.au': '🇦🇺 AU',
+        r'\.ru': '🇷🇺 RU',
+        r'\.br': '🇧🇷 BR',
+        r'\.in': '🇮🇳 IN',
+        r'\.nl': '🇳🇱 NL',
+        r'\.tr': '🇹🇷 TR',
+        r'\.id': '🇮🇩 ID',
+        r'\.my': '🇲🇾 MY',
+        r'\.th': '🇹🇭 TH',
+        r'\.vn': '🇻🇳 VN',
+    }
 
-print(f"[{datetime.now(beijing_tz).strftime('%H:%M:%S')}] ✅ 已生成 sing-box 测试配置（{len(nodes)} 个节点）")
+    for pattern, flag in domain_patterns.items():
+        if re.search(pattern, node_url, re.I):
+            return flag
 
-# ==================== 运行 sing-box URLTest 并提取延迟 ====================
-print(f"[{datetime.now(beijing_tz).strftime('%H:%M:%S')}] 🚀 启动 sing-box 进行精准延迟测试...")
-try:
-    # 运行 sing-box（后台短暂运行，足够采集延迟）
-    proc = subprocess.Popen(["./sing-box", "run", "-c", "temp_singbox_config.json"],
-                            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-    
-    # 等待 30 秒让 URLTest 采集足够数据
-    time.sleep(30)
-    proc.terminate()
+    # ==================== 3. 服务器地址 / IP 段简单判断（可选增强） ====================
+    # 如果节点包含常见国家城市关键词
+    city_keywords = {
+        'tokyo': '🇯🇵 JP', 'singapore': '🇸🇬 SG', 'hongkong': '🇭🇰 HK',
+        'seoul': '🇰🇷 KR', 'frankfurt': '🇩🇪 DE', 'london': '🇬🇧 GB',
+        'new york': '🇺🇸 US', 'los angeles': '🇺🇸 US', 'sydney': '🇦🇺 AU'
+    }
 
-    # 这里简化处理：实际生产中可通过 sing-box Clash API 获取延迟
-    # 为保证稳定，我们直接把原始节点按顺序输出（已通过 sing-box 测试）
-    # 如果你需要精确延迟数值，可后续扩展 API 解析
+    for keyword, flag in city_keywords.items():
+        if keyword.upper() in upper:
+            return flag
 
-    print(f"[{datetime.now(beijing_tz).strftime('%H:%M:%S')}] ✅ sing-box 测试完成")
-
-    # 输出最终标准协议链接（保持原始格式）
-    with open(output_file, "w", encoding="utf-8") as f:
-        f.write("\n".join(nodes))
-
-    print(f"[{datetime.now(beijing_tz).strftime('%H:%M:%S')}] 🎉 最终标准协议节点已保存到 {output_file}")
-    print(f"   共 {len(nodes):,} 条（已通过 sing-box 延迟测试 + subs-check 测速）")
-
-except Exception as e:
-    print(f"[{datetime.now(beijing_tz).strftime('%H:%M:%S')}] ❌ sing-box 测试异常: {e}")
-    # 降级处理：直接输出 alive.txt 的节点
-    with open(output_file, "w", encoding="utf-8") as f:
-        f.write("\n".join(nodes))
-    print(f"[{datetime.now(beijing_tz).strftime('%H:%M:%S')}] ⚠️ 已使用 subs-check 结果作为最终节点")
+    return '🌍 UN'  # 未知国家
