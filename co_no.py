@@ -364,20 +364,20 @@ def process_file_tree(repo):
 
                 #if added_count > 0:
                     # 情况1：提取出了新节点
-                    #print(f" 📄 文件 {file['path']:.<60} ✅ 提取成功 | 新增 {added_count} 条节点（共 {len(nodes)} 条）")
+                    #print(f" 📄 文件 {file_url:.<60} ✅ 提取成功 | 新增 {added_count} 条节点（共 {len(nodes)} 条）")
                 #else:
                     # 情况2：提取出了节点，但全部重复
-                    #print(f" 📄 文件 {file['path']:.<60} ⚪ 全部重复 | 提取 {len(nodes)} 条节点（均已存在）")
+                    #print(f" 📄 文件 {file_url:.<60} ⚪ 全部重复 | 提取 {len(nodes)} 条节点（均已存在）")
 
                 global query_links_count
                 query_links_count += 1
 
             else:
                 # 情况3：没有提取出任何节点
-                print(f" 📄 文件 {file['path']:.<60} ❌ 提取失败 | 没有提取到有效节点（格式不支持或内容无效）")
+                print(f" 📄 文件 {file_url:.<60} ❌ 提取失败 | 没有提取到有效节点（格式不支持或内容无效）")
 
         except Exception as e:
-            print(f" 📄 文件 {file['path']:.<60} ❌ 处理异常: {e} (已跳过)")
+            print(f" 📄 文件 {file_url:.<60} ❌ 处理异常: {e} (已跳过)")
 
 # ====================== 主程序 ======================
 
