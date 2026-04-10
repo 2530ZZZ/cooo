@@ -7,6 +7,7 @@ on:
   # 北京时间 00:00、06:00、12:00、18:00 执行（每6小时一次，从0点开始）
   schedule:
 
+
     - cron: '0 0 1 * *'   # UTC 04:00,10:00,16:00,22:00 → 北京时间 12:00,18:00,00:00,06:00
 
   # 允许手动触发：可以在 GitHub Actions 页面点击 "Run workflow" 立即运行
@@ -18,6 +19,9 @@ jobs:
   collect:
     # 运行环境：使用最新的 Ubuntu 系统
     runs-on: ubuntu-latest
+
+
+
 
     # ==================== 环境变量 ====================
     # FORCE_JAVASCRIPT_ACTIONS_TO_NODE24=true
@@ -49,6 +53,7 @@ jobs:
         run: pip install requests
         # 安装 co_no.py 脚本需要的 requests 库
 
+
       # 步骤4：执行我们的搜集脚本
       - name: 运行动态搜索脚本（生成 no.txt + no_li.txt）
         env:
@@ -60,15 +65,16 @@ jobs:
 
 
       # ==================== 第一阶段：subs-check 批量测活 + 测速 ====================
-      - name: 下载并运行 subs-check（20万节点本地高效测试）
+      - name: 下载并运行 subs-check（本地节点高效测试）
         run: |
-          echo "🚀 开始下载最新 subs-check 二进制文件..."
+          echo "🚀 [$(date -u -d '+8 hours' +'%Y-%m-%d %H:%M:%S CST')] 开始下载最新 subs-check 二进制文件..."
           
           # 先尝试获取最新版本（通过 GitHub API 获取真实下载链接）
           echo "   正在获取最新版本下载地址..."
           ASSET_URL=$(curl -s https://api.github.com/repos/beck-8/subs-check/releases/latest \
             | grep -o 'https://.*subs-check_linux_amd64[^"]*' | head -n 1)
           
+
           if [ -n "$ASSET_URL" ]; then
             echo "   使用subs-check最新版本地址: $ASSET_URL"
             #下载(有重试机制)
@@ -88,10 +94,12 @@ jobs:
           chmod +x subs-check
 
           echo "📊 创建 subs-check 配置文件（支持 speed-min 和 latency-max 过滤）..."
+          echo "📊 [$(date -u -d '+8 hours' +'%Y-%m-%d %H:%M:%S CST')] 创建 subs-check 配置文件..."
           cat > subs-check-config.json << 'EOF'
 
           {
             "concurrency": 50,               # 总并发数
+
             "timeout": 12,                   # 单个节点所用总时间限制(秒)
             "speed": true,                   # 是否测速
             "speed-timeout": 8,              # 测速超时时间
@@ -108,13 +116,26 @@ jobs:
 
 
             "log-level": "info"
+
+
+
+
+
+
             "remove-duplicates": true
           }
           EOF
 
-          echo "📊 开始对 no.txt 进行测活 + 测速 + 过滤（速度>=1MB/s，延迟<=800ms）..."
+          echo "🚀 [$(date -u -d '+8 hours' +'%Y-%m-%d %H:%M:%S CST')] subs-check 开始处理 no.txt ..."
+          echo "   输入节点数量: $(wc -l < no.txt) 条"
+
+
+
 
           ./subs-check \
+
+
+
 
             -input no.txt \            #输入文件
             -output alive.txt \        #输出文件
@@ -122,14 +143,32 @@ jobs:
             -target none \             # 不输出 sing-box 配置，保持【标准协议链接】
             -config subs-check-config.json      #引入上面的json配置
 
-          echo "✅ subs-check 执行完成！存活 + 测速后的标准节点已保存到 alive.txt"
+          # 记录 subs-check 结束时间并计算耗时
+          END_SUBS=$(date +%s)
+          DURATION_SUBS=$((END_SUBS - START_SUBS))
+          echo "✅ [$(date -u -d '+8 hours' +'%Y-%m-%d %H:%M:%S CST')] subs-check 处理完成！"
+          echo "   耗时: ${DURATION_SUBS} 秒"
           echo "   alive.txt 文件大小: $(du -h alive.txt 2>/dev/null | cut -f1 || echo '未知')"
+          echo "   no.txt输入节点: $(wc -l < no.txt) 条"
+          echo "   alive.txt输出存活节点: $(wc -l < alive.txt 2>/dev/null || echo 0) 条"
+
+
 
 
       # ==================== 第二阶段：sing-box 精准延迟测试 + 重命名 ====================
       - name: 下载 sing-box 并生成最终标准节点（带延迟排序）
+
+
+
+
+
+
+
+
+
+
         run: |
-          echo "🚀 开始下载最新 sing-box 二进制文件..."
+          echo "🚀 [$(date -u -d '+8 hours' +'%Y-%m-%d %H:%M:%S CST')] 开始下载 sing-box..."
           
           # sing-box 下载也采用双保险机制：先尝试 latest，失败则使用固定稳定版本
           echo "   正在获取最新 sing-box 下载地址..."
@@ -137,13 +176,13 @@ jobs:
             | grep -o 'https://.*sing-box-.*-linux-amd64.tar.gz' | head -n 1)
           
           if [ -n "$SINGBOX_ASSET" ]; then
-            echo "   使用最新版本地址: $SINGBOX_ASSET"
+            echo "   使用 sing-box 最新版本地址: $SINGBOX_ASSET"
             curl -L --fail --retry 3 --retry-delay 5 -o sing-box.tar.gz "$SINGBOX_ASSET" || echo "最新版本下载失败，使用备用版本"
           fi
           
           # 如果最新版本下载失败，则使用固定稳定版本（推荐使用较新的稳定版）
           if [ ! -s sing-box.tar.gz ]; then
-            echo "   使用固定稳定版本作为备用..."
+            echo "   sing-box 最新版下载使用失败,使用 sing-box 固定稳定版本作为备用..."
             curl -L --fail --retry 3 --retry-delay 5 \
               -o sing-box.tar.gz \
               https://github.com/SagerNet/sing-box/releases/download/v1.13.6/sing-box-1.13.6-linux-amd64.tar.gz
@@ -153,29 +192,18 @@ jobs:
           tar -xzf sing-box.tar.gz
           mv sing-box-*/sing-box ./sing-box
           chmod +x sing-box
-          
-          echo "📈 sing-box 开始对 alive.txt 进行 URLTest 精准延迟测试 + 重命名..."
-          python fi_no.py alive.txt fi_no.txt || python process_final_nodes.py alive.txt fi_no.txt
 
-          echo "✅ 最终标准协议节点已生成 → fi_no.txt"
+          echo "📈 [$(date -u -d '+8 hours' +'%Y-%m-%d %H:%M:%S CST')] sing-box 开始处理 alive.txt 并重命名..."
+          echo "   alive.txt输入节点数量: $(wc -l < alive.txt 2>/dev/null || echo 0) 条"
 
+          START_SING=$(date +%s)
+          python fi_no.py alive.txt fi_no.txt
+          END_SING=$(date +%s)
+          DURATION_SING=$((END_SING - START_SING))
 
-
-  
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+          echo "✅ [$(date -u -d '+8 hours' +'%Y-%m-%d %H:%M:%S CST')] sing-box 处理完成！"
+          echo "   耗时: ${DURATION_SING} 秒"
+          echo "   fi_no.txt输出最终节点: $(wc -l < fi_no.txt 2>/dev/null || echo 0) 条"
 
 
 
@@ -185,6 +213,7 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
 
+
           # 获取当前北京时间（格式：2026-04-10 05:39:56）
           BEIJING_TIME=$(date -u -d '+8 hours' +'%Y-%m-%d %H:%M:%S')
           echo "当前北京时间: $BEIJING_TIME CST"
@@ -192,6 +221,7 @@ jobs:
           # 关键：强制设置 Git 提交时间为北京时间（这样 GitHub 显示的时间才是北京时间）
           export GIT_AUTHOR_DATE="$BEIJING_TIME +0800"
           export GIT_COMMITTER_DATE="$BEIJING_TIME +0800"
+
 
           # 添加文件（同时提交 no_li.txt 和 no.txt 和 alive.txt 和 fi_no.txt）
           git add no_li.txt
