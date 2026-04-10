@@ -16,70 +16,103 @@ headers = {
 
 # 关键词列表（你可以继续添加或删除）
 
+
+
 QUERIES = [
-    # 基础高频组合
+    # ==================== 1. 基础高频 + 通用词 ====================
     "free nodes",
-    "free clash nodes",
+    "free proxy nodes",
     "free v2ray nodes",
+    "free clash nodes",
     "free trojan nodes",
     "free hysteria nodes",
     "free vless nodes",
     "free hysteria2 nodes",
     "free tuic nodes",
     "free reality nodes",
+    "free singbox nodes",
 
-    # 订阅相关
+    # ==================== 2. 知名主流项目（高价值） ====================
+    "ACL4SSR",
+    "ACL4SSR ACL",
+    "subconverter",
+    "subconverter subscription",
+    "v2rayN",
+    "v2rayNG",
+    "Clash.Meta",
+    "mihomo",
+    "Clash for Windows",
+    "Hiddify",
+    "Shadowrocket",
+    "Quantumult X",
+    "Stash",
+    "sing-box subscription",
+
+    # ==================== 3. 订阅相关高频词 ====================
     "clash subscription github",
     "v2ray subscription github",
     "trojan subscription github",
     "hysteria2 subscription",
     "singbox subscription",
+    "free subscription github",
+    "daily subscription",
+    "base64 subscription",
 
-    # 中文高频词
+    # ==================== 4. 中文高频搜索词 ====================
     "免费节点",
     "免费clash订阅",
     "免费v2ray订阅",
     "免费trojan订阅",
     "免费hysteria订阅",
+    "免费hysteria2订阅",
     "免费机场节点",
     "免费节点订阅",
+    "免费机场订阅",
+    "免费clash节点",
+    "免费v2ray节点",
+    "免费机场",
+    "节点订阅",
+    "clash 订阅",
+    "v2ray 订阅",
 
-    # 混合组合
-    "免费 (clash OR v2ray OR trojan OR hysteria OR hysteria2 OR tuic OR reality) (订阅 OR 节点)",
-    "clash (订阅 OR 配置 OR nodes) github",
-    "v2ray (订阅 OR 配置) github",
+    # ==================== 5. 混合 OR 组合（覆盖最广） ====================
+    "免费 (clash OR v2ray OR trojan OR hysteria OR hysteria2 OR tuic OR reality OR singbox) (订阅 OR 节点 OR 机场)",
+    "clash (订阅 OR 配置 OR 节点 OR 免费) github",
+    "v2ray (订阅 OR 配置 OR 节点) github",
+    "trojan (订阅 OR 节点) github",
+    "hysteria2 (订阅 OR 节点) github",
 
-    # 其他常见变体
-    "base64 subscription",
-    "clash meta free",
-    "singbox free nodes",
-    "airport free nodes",
+    # ==================== 6. 其他重要变体与收集器 ====================
+    "free proxy daily github",
+    "free nodes daily",
     "proxy collector github",
-    "v2ray collector",
-    "shadowrocket nodes",
-    "hiddify nodes",
-
-    "free (nodes OR subscription OR clash OR v2ray OR trojan OR hysteria OR hysteria2)",
-    "free clash sub github",
-    "free v2ray config subscription",
-    "V2RayRoot subscription",
+    "v2ray collector github",
+    "clash collector github",
     "TelegramV2rayCollector",
-    "ProxyCollector", "V2RAY-CLASH-BASE64-Subscription", "free proxy nodes sub trojan hysteria2",
-    "free nodes clash yaml", "v2ray subscription links github", "free clash subscribe",
-    "proxy collector v2ray", "free v2ray nodes subscription", "clash sub github",
-    "free airport nodes", "免费节点 订阅 clash v2ray", "免费clash订阅", "免费v2ray订阅",
-    "免费trojan订阅", "免费hysteria订阅", "免费节点 clash", "免费v2ray配置 github",
-    "免费机场节点", "free nodes daily", "free proxy daily github", "clash meta free nodes",
-    "singbox free nodes", "hysteria2 free sub github", "trojan free sub github",
-    "vless free nodes github", "vmess free nodes github", "ss free nodes github",
-    "ssr free nodes github", "free clash meta sub github", "free v2ray sub github",
-    "airport free nodes github", "free proxy collector github", "free v2ray collector github",
-    "free clash collector github", "免费节点订阅", "免费clash节点", "免费v2ray节点",
-    "免费机场订阅", "clash free subscription github", "v2ray free sub github",
-    "free nodes sub", "free proxy list clash", "free v2ray config github", "free hysteria2 nodes",
-    "free trojan nodes github", "free ss nodes github", "free ssr nodes github",
-    "free singbox nodes github", "free mihomo nodes", "free clash for windows nodes",
-    "free shadowrocket nodes", "free hiddify nodes", "free v2rayng nodes"
+    "ProxyCollector",
+    "V2RAY-CLASH-BASE64-Subscription",
+    "V2RayRoot subscription",
+    "airport free nodes github",
+    "free airport nodes",
+    "free shadowrocket nodes",
+    "free hiddify nodes",
+    "free v2rayng nodes",
+    "free clash meta nodes",
+    "free mihomo nodes",
+    "free sing-box nodes github",
+    "free ss nodes github",
+    "free ssr nodes github",
+
+    # ==================== 7. 额外高价值关键词 ====================
+    "sub list github",
+    "节点列表 github",
+    "免费节点列表",
+    "clash yaml github",
+    "vless free nodes github",
+    "reality free nodes github",
+    "tuic free nodes github",
+    "subconverter list",
+    "ACL4SSR list"
 ]
 
 # ==================== 全局变量 ====================
@@ -147,25 +180,34 @@ def safe_get(url, timeout=25, max_retries=3, operation_name="请求"):
     print(f"[{datetime.now(beijing_tz).strftime('%H:%M:%S')}] ❌ {operation_name} 多次失败，已跳过")
     return None
 
-# ====================== 增强版节点提取函数（协议覆盖全面版） ======================
+# ====================== 增强版节点提取函数（大幅优化，支持更多风格） ======================
 def extract_nodes_from_text(text):
     """
     增强版节点提取函数 - 支持几乎所有协议和格式
 
     支持协议和格式：
-    - vmess:// vless:// trojan:// ss:// ssr:// hysteria:// hysteria2:// tuic:// reality://
+
+
+
+
+
+
+
+    - 标准协议链接 vmess:// vless:// trojan:// ss:// ssr:// hysteria:// hysteria2:// tuic:// reality://
     - Shadowsocks ss:// 完整 base64 格式（包括带 # 备注）
-    - Clash / Sing-box YAML 单行节点：- {name: ..., server: ..., type: vless, ...}
+    - Clash/Sing-box YAML 单行和多行 proxies：- {name: ..., server: ..., type: vless, ...}
     - Clash 多行 proxies 格式
     - README 中直接写的 raw 订阅链接（https://raw.githubusercontent.com/...）
     - 各种 base64 编码的节点（自动解码 + 清理）
     - Clash / Sing-box 的 proxies 数组（JSON 或 YAML 格式）
+    - JSON 格式的 proxies 数组和 outbounds
     - 嵌套在对象中的 proxies 列表
     - 标准协议链接 + base64 + YAML 单行/多行
     """
     nodes = []
     if not text or len(text.strip()) < 10:
         return nodes
+
 
 
     # 1. 提取标准协议链接（vmess://, vless://, trojan://, ss:// 等）
@@ -180,6 +222,7 @@ def extract_nodes_from_text(text):
     ss_pattern = r'ss://[A-Za-z0-9+/=]+(?:#[^\s<>"\']*)?'
     ss_matches = re.findall(ss_pattern, text, re.IGNORECASE)
     nodes.extend(ss_matches)
+
 
 
     # 3. 提取 Clash / Sing-box YAML 单行节点 - {name: ..., server: ..., type: ...}
@@ -204,7 +247,7 @@ def extract_nodes_from_text(text):
             clean = re.sub(r'\s+', ' ', clean)
             nodes.append(clean)
 
-    # 5. 新增：支持 JSON 格式的 proxies 数组（你提供的第一种格式）
+    # 5. JSON 格式 proxies / outbounds 
     # 匹配 proxies: [ { "name": "...", "type": "vless", ... } ]
     try:
         # 尝试解析整个文本为 JSON（有些文件是纯 JSON）
@@ -227,10 +270,10 @@ def extract_nodes_from_text(text):
         obj_pattern = r'\{[\s\S]*?\}'
         objs = re.findall(obj_pattern, arr)
         for obj in objs:
-            if '"type"' in obj and ('"vless"' in obj or '"trojan"' in obj or '"ss"' in obj):
+            if '"type"' in obj and ('"vless"' in obj or '"trojan"' in obj or '"ss"' in obj or '"hysteria"' in obj):
                 nodes.append(obj.strip())
 
-    # 7. 提取文件中直接写的 raw 订阅链接
+    # 7. 提取 raw 订阅链接并加入处理队列
     raw_link_pattern = r'https?://raw\.githubusercontent\.com/([^/\s]+/[^/\s]+)'
     raw_matches = re.findall(raw_link_pattern, text, re.IGNORECASE)
     for repo_path in raw_matches:
@@ -248,7 +291,7 @@ def extract_nodes_from_text(text):
             # 走完整处理流程（commit时间 + 文件树）
             process_repo(repo_path)
 
-    # 6. 加强 base64 解码（处理各种嵌套和复杂情况）
+    # 8. 加强 base64 解码（处理各种嵌套和复杂情况）
 
     base64_pattern = r'[A-Za-z0-9+/=]{60,}'
     base64_candidates = re.findall(base64_pattern, text)
@@ -330,6 +373,9 @@ def is_valid_node_link(link):
 # ====================== 公共方法：处理单个仓库 ======================
 def process_repo(repo):
     """公共方法：处理单个仓库（检查更新时间 + 调用文件树处理）"""
+
+
+
     #print(f" [{datetime.now(beijing_tz).strftime('%H:%M:%S')}] 检查仓库 ({checked_count}): https://github.com/{repo}")
 
 
@@ -354,6 +400,9 @@ def process_repo(repo):
 # ====================== 公共方法：处理文件树（核心逻辑） ======================
 def process_file_tree(repo):
     """公共方法：处理仓库的文件树，提取符合条件的订阅文件"""
+
+
+
     print(f" [{datetime.now(beijing_tz).strftime('%H:%M:%S')}] 开始处理文件树: https://github.com/{repo}")
 
 
@@ -370,6 +419,7 @@ def process_file_tree(repo):
 
         fname = file["path"].lower()
 
+
         # 把 README.md 也当作普通文件处理
 
 
@@ -379,12 +429,13 @@ def process_file_tree(repo):
             continue
 
 
+
         # 对每个具体文件单独检查最后 commit 时间（解决多层嵌套问题）
         file_commit_url = f"https://api.github.com/repos/{repo}/commits?path={file['path']}&per_page=1"
         f_resp = safe_get(file_commit_url, timeout=12, operation_name=f"文件 {file['path']} commit 查询")
         if f_resp is None or f_resp.status_code != 200:
             continue
-
+        
         try:
             file_time_str = f_resp.json()[0]["commit"]["committer"]["date"]
             file_time = datetime.fromisoformat(file_time_str.replace("Z", "+00:00"))
@@ -394,6 +445,7 @@ def process_file_tree(repo):
             # 生成完整的 raw 链接
             file_url = f"https://raw.githubusercontent.com/{repo}/main/{file['path']}"
             #print(f" 🔄 验证订阅链接: {file_url}")   # 显示完整 raw 链接
+
             # 关键修改：验证 + 提取节点
 
 
@@ -422,6 +474,9 @@ def process_file_tree(repo):
                     # 情况2：提取出了节点，但全部重复
                     #print(f" 📄 文件 {file_url:.<60} ⚪ 全部重复 | 提取 {len(nodes)} 条节点（均已存在）")
 
+
+
+
                 global query_links_count
                 query_links_count += 1
 
@@ -430,6 +485,8 @@ def process_file_tree(repo):
                 print(f" 📄 文件 {file_url:.<60} ❌ 提取失败 | 没有提取到有效节点（格式不支持或内容无效）")
 
         except Exception as e:
+            file_url = f"https://raw.githubusercontent.com/{repo}/main/{file['path']}"
+
 
             print(f" 📄 文件 {file_url:.<60} ❌ 处理异常: {e} (已跳过)")
 
@@ -441,7 +498,7 @@ for query_idx, query in enumerate(QUERIES, 1):
     query_links_count = 0   # 当前关键词贡献的链接数量
 
     page = 1
-    while page <= 10:
+    while page <= 20:
         print(f" [{datetime.now(beijing_tz).strftime('%H:%M:%S')}] 正在请求第 {page} 页...")
         
         url = f"https://api.github.com/search/repositories?q={query}&sort=updated&order=desc&per_page=100&page={page}"
@@ -470,6 +527,7 @@ for query_idx, query in enumerate(QUERIES, 1):
             # 调用仓库处理方法（会检查 commit 时间 + 处理文件树 + 提取节点）
             process_repo(repo)
             time.sleep(0.3)   # 每个仓库轻微等待，避免请求过快
+
 
 
 
@@ -502,7 +560,7 @@ if unique_nodes:
 else:
     print(f"\n[{datetime.now(beijing_tz).strftime('%H:%M:%S')}] ⚠️ 未提取到任何有效节点")
 
-# 生成 no.txt 的 raw 链接并加入到 da_fr_no.txt
+# 生成 no.txt 的 raw 链接并加入到 no_li.txt
 repo_name = os.getenv("GITHUB_REPOSITORY", "2530ZZZ/cooo")
 no_txt_raw_url = f"https://raw.githubusercontent.com/{repo_name}/main/no.txt"
 all_links.append(no_txt_raw_url)
