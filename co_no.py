@@ -148,7 +148,7 @@ def safe_get(url, timeout=25, max_retries=3, operation_name="请求"):
     """
     for attempt in range(1, max_retries + 1):
         try:
-            print(f"[{datetime.now(beijing_tz).strftime('%H:%M:%S')}] 🔄 {operation_name} 第 {attempt}/{max_retries} 次尝试...")
+            #print(f"[{datetime.now(beijing_tz).strftime('%H:%M:%S')}] 🔄 {operation_name} 第 {attempt}/{max_retries} 次尝试...")
             resp = requests.get(url, headers=headers, timeout=timeout)
 
             # 处理限流
@@ -160,7 +160,7 @@ def safe_get(url, timeout=25, max_retries=3, operation_name="请求"):
                 time.sleep(5)
                 continue
                 
-            print(f"[{datetime.now(beijing_tz).strftime('%H:%M:%S')}] {operation_name} 成功")
+            #print(f"[{datetime.now(beijing_tz).strftime('%H:%M:%S')}] {operation_name} 成功")
             return resp
 
         except requests.exceptions.Timeout:
@@ -261,7 +261,7 @@ def extract_nodes_from_text(text):
             continue
         # 如果这个仓库还没有处理过，就当作正常发现的仓库处理
         if repo_path not in seen_repos:
-            print(f" 🔗 从文本中发现 raw 订阅链接 → https://github.com/{repo_path} ，加入处理队列")
+            print(f" 🔗 从文本中发现 raw 订阅链接 → https://github.com/{repo_path} ，将其仓库加入处理队列")
             # 防止重复处理
             seen_repos.add(repo_path)
             # 注意：checked_count 是全局变量，必须用 global 声明才能修改
