@@ -419,7 +419,7 @@ def process_file_tree(repo):
                 if added_count > 0:
                     all_links.append(file_url)    #有新增节点, 把链接加入
                     #print(f" 📄 文件 {file_url} ✅ 提取成功 | 新增 {added_count} 条新节点（共 {len(nodes)} 条）")
-                if added_count = 0:
+                if added_count == 0:
                     # 如果全部重复，则不保留该 raw 链接
                     all_links.pop()   # 移除刚才加入的链接
                     #print(f" 📄 文件 {file_url} ⚪ 全部重复 | 提取 {len(nodes)} 条节点（均已存在）")
@@ -470,9 +470,9 @@ for query_idx, query in enumerate(QUERIES, 1):
             checked_count += 1
             # 调用仓库处理方法（会检查 commit 时间 + 处理文件树 + 提取节点）
             process_repo(repo)
-            time.sleep(0.5)   # (秒)每个仓库轻微等待，避免请求过快
+            time.sleep(2)   # (秒)在处理完一个仓库后（不管成功还是失败）轻微等待，避免请求过快
         page += 1
-        time.sleep(2)   # (秒)翻页间隔，降低 API 压力
+        time.sleep(10)   # (秒)翻页间隔，每页处理完后强制冷却，降低 API 压力
 
     print(f"[{datetime.now(beijing_tz).strftime('%H:%M:%S')}] └─ 本关键词贡献 {query_links_count} 条有效链接")
 
