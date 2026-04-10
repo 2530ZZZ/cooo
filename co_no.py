@@ -419,7 +419,7 @@ def process_file_tree(repo):
                 if added_count > 0:
                     all_links.append(file_url)    #有新增节点, 把链接加入
                     #print(f" 📄 文件 {file_url} ✅ 提取成功 | 新增 {added_count} 条新节点（共 {len(nodes)} 条）")
-                if added_count == 0:
+                if added_count = 0:
                     # 如果全部重复，则不保留该 raw 链接
                     all_links.pop()   # 移除刚才加入的链接
                     #print(f" 📄 文件 {file_url} ⚪ 全部重复 | 提取 {len(nodes)} 条节点（均已存在）")
