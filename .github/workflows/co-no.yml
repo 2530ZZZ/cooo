@@ -160,11 +160,38 @@ jobs:
           echo "✅ 最终标准协议节点已生成 → fi_no.txt"
 
 
+
+  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
       # ==================== 提交所有结果 ====================
       - name: 提交更新后的所有文件
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+          # 获取当前北京时间（格式：2026-04-10 05:39:56）
+          BEIJING_TIME=$(date -u -d '+8 hours' +'%Y-%m-%d %H:%M:%S')
+          echo "当前北京时间: $BEIJING_TIME CST"
+          
+          # 关键：强制设置 Git 提交时间为北京时间（这样 GitHub 显示的时间才是北京时间）
+          export GIT_AUTHOR_DATE="$BEIJING_TIME +0800"
+          export GIT_COMMITTER_DATE="$BEIJING_TIME +0800"
 
           # 添加文件（同时提交 no_li.txt 和 no.txt 和 alive.txt 和 fi_no.txt）
           git add no_li.txt
@@ -173,9 +200,8 @@ jobs:
           git add fi_no.txt
 
           # 提交（如果文件没有变化则不提交）
-          # 使用北京时间（UTC+8）作为提交时间
-          git commit -m "更新jd + su-ch测活测速 + si-bo精准延迟 + 重命名 - $(date -u -d '+8 hours' +'%Y-%m-%d %H:%M:%S CST')" || echo "No changes to commit"
-
+          # 消息中也使用北京时间，保持一致
+          git commit -m "自动更新 + subs-check测活测速 + sing-box精准延迟 + 重命名 - $BEIJING_TIME CST" || echo "No changes to commit"
 
           # 推送到仓库
           git push
