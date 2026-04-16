@@ -14,16 +14,9 @@ headers = {
     "User-Agent": "Mozilla/5.0 (compatible; FreeNodesCollector/2.0)"
 }
 
-
-
-
-
 # 关键词列表（可以继续添加或删除）
 QUERIES = [
     # ==================== 1. 基础高频 + 通用词 ====================
-
-
-
     "free nodes",
     "free proxy nodes",
     "free v2ray nodes",
@@ -37,10 +30,6 @@ QUERIES = [
     "free singbox nodes",
 
     # ==================== 2. 知名主流项目（高价值） ====================
-
-
-
-
     "ACL4SSR",
     "ACL4SSR ACL",
     "subconverter",
@@ -57,10 +46,6 @@ QUERIES = [
     "sing-box subscription",
 
     # ==================== 3. 订阅相关高频词 ====================
-
-
-
-
     "clash subscription github",
     "v2ray subscription github",
     "trojan subscription github",
@@ -71,11 +56,6 @@ QUERIES = [
     "base64 subscription",
 
     # ==================== 4. 中文高频搜索词 ====================
-
-
-
-
-
     "免费节点",
     "免费clash订阅",
     "免费v2ray订阅",
@@ -101,17 +81,6 @@ QUERIES = [
     "hysteria2 (订阅 OR 节点) github",
 
     # ==================== 6. 其他重要变体与收集器 ====================
-
-
-
-
-
-
-
-
-
-
-
     "free proxy daily github",
     "free nodes daily",
     "proxy collector github",
@@ -146,38 +115,16 @@ QUERIES = [
 ]
 
 # ==================== 全局变量 ====================
-
-
-
-
-
-
-all_links = []                      # 最终收集到的所有订阅链接（no_li.txt）
-seen_repos = set()                  # 已检查过的仓库（实现跳过重复仓库,防止重复处理）
-checked_count = 0                   # 统计总共检查了多少个仓库
-unique_nodes = set()                # 全局去重集合（set自动去重,用于最终生成干净的 no.txt）
+all_links = []                  # 最终收集到的所有订阅链接（no_li.txt）
+seen_repos = set()              # 已检查过的仓库（实现跳过重复仓库,防止重复处理）
+checked_count = 0               # 统计总共检查了多少个仓库
+unique_nodes = set()            # 全局去重集合（set自动去重,用于最终生成干净的 no.txt）
 query_links_count = 0           # 每关键词贡献的链接数（模块级全局）
 beijing_tz = timezone(timedelta(hours=8))  # 所有日志、打印、commit 消息都改成北京时间显示
 
 # ====================== 记录程序开始时间（用于计算总耗时） ======================
 start_time = time.time()
-
 print(f"[{datetime.now(beijing_tz).strftime('%Y-%m-%d %H:%M:%S')}] 🚀 程序启动,开始动态搜索...")
-
-# ====================== 通用限流处理函数 ======================
-def handle_rate_limit(resp, operation_name="未知操作"):
-    """统一处理 GitHub API 限流（包括 403 和 409）"""
-    if resp.status_code not in (403, 409):
-        return False
-    reset_time = resp.headers.get('X-RateLimit-Reset')
-    if reset_time:
-        wait_seconds = int(reset_time) - int(time.time()) + 15
-        print(f"[{datetime.now(beijing_tz).strftime('%H:%M:%S')}] ⚠️ {operation_name} 触发限流 | 等待 {wait_seconds} 秒...")
-        time.sleep(max(wait_seconds, 60))
-    else:
-        print(f"[{datetime.now(beijing_tz).strftime('%H:%M:%S')}] ⚠️ {operation_name} 返回 {resp.status_code}， 触发限流 | 保守等待 90 秒...")
-        time.sleep(90)
-    return True
 
 # ====================== 安全请求函数（防止卡死） ======================
 def safe_get(url, timeout=25, max_retries=3, operation_name="请求"):
@@ -191,34 +138,38 @@ def safe_get(url, timeout=25, max_retries=3, operation_name="请求"):
             #print(f"[{datetime.now(beijing_tz).strftime('%H:%M:%S')}] 🔄 {operation_name} 第 {attempt}/{max_retries} 次尝试...")
             resp = requests.get(url, headers=headers, timeout=timeout)
 
-
-            # 处理限流
-            if handle_rate_limit(resp, operation_name):
-                continue
-
             if resp.status_code == 200:
                 return resp   # 成功立即返回
 
-
             print(f"[{datetime.now(beijing_tz).strftime('%H:%M:%S')}] {operation_name} 返回状态码: {resp.status_code} (尝试 {attempt}/{max_retries})")
 
-            if resp.status_code != 200:
-                wait = 10 + attempt * 8
-                print(f"[{datetime.now(beijing_tz).strftime('%H:%M:%S')}] {operation_name} 返回状态码: {resp.status_code} (尝试 {attempt}/{max_retries})，等待 {wait} 秒后重试...")
-                time.sleep(wait)
+            if resp.status_code in (403, 409):
+                reset_time = resp.headers.get('X-RateLimit-Reset')
+                if reset_time:
+                    wait_seconds = int(reset_time) - int(time.time()) + 15
+                    print(f"[{datetime.now(beijing_tz).strftime('%H:%M:%S')}] ⚠️ {operation_name} 触发限流 | 等待 {wait_seconds} 秒...")
+                    time.sleep(max(wait_seconds, 60))
+                else:
+                    print(f"[{datetime.now(beijing_tz).strftime('%H:%M:%S')}] ⚠️ {operation_name} 返回 {resp.status_code}，保守等待 90 秒...")
+                    time.sleep(90)
                 continue
 
+            
+            #其他错误代码
+            wait = 10 + attempt * 8
+            print(f"[{datetime.now(beijing_tz).strftime('%H:%M:%S')}] {operation_name} 返回状态码: {resp.status_code} (尝试 {attempt}/{max_retries})，等待 {wait} 秒后重试...")
+            time.sleep(wait)
+            continue
+            
         except requests.exceptions.Timeout:
             print(f"[{datetime.now(beijing_tz).strftime('%H:%M:%S')}] ⚠️ {operation_name} 超时 (尝试 {attempt}/{max_retries})")
         except requests.exceptions.ConnectionError:
             print(f"[{datetime.now(beijing_tz).strftime('%H:%M:%S')}] ⚠️ {operation_name} 连接错误 (尝试 {attempt}/{max_retries})")
         except Exception as e:
-
             print(f"[{datetime.now(beijing_tz).strftime('%H:%M:%S')}] ⚠️ {operation_name} 异常: {e} (尝试 {attempt}/{max_retries})")
 
         # 指数退避等待
         wait = 8 * attempt
-
         print(f"[{datetime.now(beijing_tz).strftime('%H:%M:%S')}]{operation_name} 等待 {wait} 秒后重试...")
         time.sleep(wait)
 
@@ -253,36 +204,21 @@ def extract_nodes_from_text(text):
         return nodes
 
 
-
     # 1. 提取标准协议链接（vmess://, vless://, trojan://, ss:// 等）
-
     protocol_pattern = r'(vmess|vless|trojan|ss|ssr|hysteria|hysteria2|tuic|reality)://[^\s<>"\']{15,}'
-
-
-
     found = re.findall(protocol_pattern, text, re.IGNORECASE)
     nodes.extend(found)
 
 
     # 2. 特别处理 Shadowsocks ss:// 完整 base64 格式（包括带 # 备注）
     ss_pattern = r'ss://[A-Za-z0-9+/=]+(?:#[^\s<>"\']*)?'
-
-
-
     ss_matches = re.findall(ss_pattern, text, re.IGNORECASE)
     nodes.extend(ss_matches)
 
 
-
     # 3. 提取 Clash / Sing-box YAML 单行节点 - {name: ..., server: ..., type: ...}
-
     yaml_single_pattern = r'-\s*\{[^}]*?(?:name|server|port|type|uuid|password|ps|flow|reality-opts|sni|fp|client-fingerprint)[^}]*\}'
     yaml_matches = re.findall(yaml_single_pattern, text, re.IGNORECASE | re.DOTALL)
-
-
-
-
-
 
     for match in yaml_matches:
         clean = match.strip()
@@ -294,12 +230,7 @@ def extract_nodes_from_text(text):
 
     # 4. 提取 Clash(YAML) 多行 proxies 格式（从 name: 开始到下一个 name: 或结尾）
     yaml_multi_pattern = r'-\s*name:.*?(?=-\s*name:|\Z)'
-
-
-
-
     multi_matches = re.findall(yaml_multi_pattern, text, re.IGNORECASE | re.DOTALL | re.MULTILINE)
-
 
     for match in multi_matches:
         clean = match.strip()
@@ -307,32 +238,23 @@ def extract_nodes_from_text(text):
             clean = re.sub(r'\s+', ' ', clean)
             nodes.append(clean)
 
-
-
-    # 5. JSON 格式 proxies / outbounds 
-    # 匹配 proxies: [ { "name": "...", "type": "vless", ... } ]
+    # 5. JSON 格式 proxies / outbounds（支持所有协议）
     try:
         # 尝试解析整个文本为 JSON（有些文件是纯 JSON）
         data = json.loads(text)
         if isinstance(data, dict):
-            proxies = data.get("proxies") or data.get("outbounds")
+            proxies = data.get("proxies") or data.get("outbounds") or data.get("proxy_groups")
             if isinstance(proxies, list):
                 for p in proxies:
                     if isinstance(p, dict):
-
-
                         node_str = json.dumps(p, ensure_ascii=False)
                         nodes.append(node_str)
+                    elif isinstance(p, str) and any(proto in p.lower() for proto in ["trojan://", "hysteria2://", "hy2://", "vmess://", "vless://", "ss://"]):
+                        nodes.append(p)
     except:
         pass
 
-
-
-
-
-
-
-    # 6. 新增：匹配文本中出现的 proxies 数组（即使不是完整 JSON）
+    # 6. 匹配文本中出现的 proxies 数组（支持所有协议）
     proxies_array_pattern = r'"proxies"\s*:\s*\[([\s\S]*?)\]'
     array_matches = re.findall(proxies_array_pattern, text, re.IGNORECASE)
     for arr in array_matches:
@@ -340,7 +262,7 @@ def extract_nodes_from_text(text):
         obj_pattern = r'\{[\s\S]*?\}'
         objs = re.findall(obj_pattern, arr)
         for obj in objs:
-            if '"type"' in obj and ('"vless"' in obj or '"trojan"' in obj or '"ss"' in obj or '"hysteria"' in obj):
+            if any(proto in obj.lower() for proto in ["trojan", "hysteria2", "hy2", "vmess", "vless", "ss"]):
                 nodes.append(obj.strip())
 
 
@@ -383,7 +305,7 @@ def extract_nodes_from_text(text):
 
                 if not line:
                     continue
-                if line.startswith(('vmess://', 'vless://', 'trojan://', 'ss://', 'ssr://', 'hysteria://', 'hysteria2://', 'tuic://', 'reality://')):
+                if line.startswith(('vmess://', 'vless://', 'trojan://', 'ss://', 'ssr://', 'hysteria://', 'hysteria2://', 'tuic://', 'reality://', 'hy2://')):
 
                     nodes.append(line)
                 elif '{' in line and ('type:' in line or 'uuid:' in line or 'password:' in line):
@@ -405,8 +327,6 @@ def extract_nodes_from_text(text):
                         nodes.append(line)
             except:
                 pass
-
-
 
     # 最终清理：去重 + 过滤明显无效行
     cleaned_nodes = []
@@ -461,12 +381,14 @@ def process_file_tree(repo, path=""):
     print(f" [{datetime.now(beijing_tz).strftime('%H:%M:%S')}] 进入目录: {current_path} | 仓库: https://github.com/{repo}")
 
 
+
+
     tree_url = f"https://api.github.com/repos/{repo}/git/trees/main:{path}" if path else \
                f"https://api.github.com/repos/{repo}/git/trees/main"
 
     t_resp = safe_get(tree_url, timeout=25, operation_name=f"文件树 {current_path}")
     if t_resp is None or t_resp.status_code != 200:
-        print(f" [{datetime.now(beijing_tz).strftime('%H:%M:%S')}] 文件树请求失败或超时: {github_url}")
+        print(f" [{datetime.now(beijing_tz).strftime('%H:%M:%S')}] 文件树请求失败或超时: https://github.com/{repo}")
         return
 
     for item in t_resp.json().get("tree", []):
@@ -480,10 +402,15 @@ def process_file_tree(repo, path=""):
             continue
 
 
-        file_time_str = f_resp.json()[0]["commit"]["committer"]["date"]
-        file_time = datetime.fromisoformat(file_time_str.replace("Z", "+00:00"))
-        if datetime.now(timezone.utc) - file_time >= timedelta(hours=24):
+
+        try:
+            file_time_str = f_resp.json()[0]["commit"]["committer"]["date"]
+            file_time = datetime.fromisoformat(file_time_str.replace("Z", "+00:00"))
+            if datetime.now(timezone.utc) - file_time >= timedelta(hours=24):
+                continue
+        except:
             continue
+
 
 
 
@@ -501,6 +428,7 @@ def process_file_tree(repo, path=""):
 
             file_url = f"https://raw.githubusercontent.com/{repo}/main/{full_item_path}"
 
+
             #print(f" 🔄 处理订阅文件: {file_url}")   # 显示完整 raw 链接
             
             # 直接请求一次文件内容，然后提取节点
@@ -509,9 +437,11 @@ def process_file_tree(repo, path=""):
                 print(f" 📄 文件 {file_url} ❌ 下载失败")
                 continue
 
+
             # 直接调用节点提取函数
             content = resp.text
-            nodes = extract_nodes_from_text(content)     
+            nodes = extract_nodes_from_text(content)
+
 
 
             if nodes:
@@ -530,8 +460,8 @@ def process_file_tree(repo, path=""):
                     #搜索词提供链接计数
                     global query_links_count
                     query_links_count += 1
-
-
+                else:
+                    print(f" 📄 文件 {file_url} ⚪ 全部重复（不保留链接）")
             else:
                 # 情况3：没有提取出任何节点
                 print(f" 📄 文件 {file_url} ❌ 提取失败 | 没有提取到有效节点")
@@ -540,19 +470,18 @@ def process_file_tree(repo, path=""):
 
 for query_idx, query in enumerate(QUERIES, 1):
     print(f"\n[{datetime.now(beijing_tz).strftime('%H:%M:%S')}] 🔎 开始搜索第 {query_idx}/{len(QUERIES)} 个关键词: {query}")
+
     query_links_count = 0          # 每关键词重置关键词贡献的链接数量计数器
 
 
     page = 1
+
 
     while page <= 10:          # 不能超过 30 页，前面几页质量更好更高效
         print(f" [{datetime.now(beijing_tz).strftime('%H:%M:%S')}] 正在请求第 {page} 页...")
         
         url = f"https://api.github.com/search/repositories?q={query}&sort=updated&order=desc&per_page=100&page={page}"
         resp = safe_get(url, timeout=30, operation_name=f"搜索关键词第{page}页")
-
-
-
         
         if resp.status_code != 200:
             print(f"[{datetime.now(beijing_tz).strftime('%H:%M:%S')}] 搜索失败，第{page}页状态码: {resp.status_code}")
@@ -573,10 +502,14 @@ for query_idx, query in enumerate(QUERIES, 1):
             # 调用仓库处理方法（会检查 commit 时间 + 处理文件树 + 提取节点）
             process_repo(repo)
 
+
+
             time.sleep(2)   # (秒)在处理完一个仓库后（不管成功还是失败）轻微等待，避免请求过快
 
 
         page += 1
+
+
 
         time.sleep(12)   # (秒)翻页间隔，每页处理完后强制冷却，降低 API 压力
 
@@ -629,12 +562,14 @@ runtime_str = f"{hours}小时 {minutes}分 {seconds}秒" if hours > 0 else f"{mi
 
 new_nodes = unique_nodes
 
+
 print(f"\n📈 no.txt 节点对比报告")
 print(f" 新 no.txt 节点总数 : {len(new_nodes):,} 条")
 print(f" 旧 no.txt 节点总数 : {len(old_nodes):,} 条")
 print(f" 新增节点 : {len(new_nodes - old_nodes):,} 条")
 print(f" 去除节点 : {len(old_nodes - new_nodes):,} 条")
 print(f" 保留节点 : {len(new_nodes & old_nodes):,} 条")
+
 
 # ====================== no_li.txt 新旧链接对比 ======================
 
