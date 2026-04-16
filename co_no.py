@@ -16,6 +16,7 @@ headers = {
 
 
 
+
 # 关键词列表（可以继续添加或删除）
 QUERIES = [
     # ==================== 1. 基础高频 + 通用词 ====================
@@ -121,36 +122,42 @@ QUERIES = [
 ]
 
 # ==================== 全局变量 ====================
-all_links = []                      # 最终收集到的所有订阅链接（常规订阅文件）
-seen_repos = set()                  # 已检查过的仓库（关键：实现智能跳过重复仓库）
+
+
+
+
+
+all_links = []                      # 最终收集到的所有订阅链接（no_li.txt）
+seen_repos = set()                  # 已检查过的仓库（实现跳过重复仓库,防止重复处理）
 checked_count = 0                   # 统计总共检查了多少个仓库
 unique_nodes = set()                # 全局去重集合（set自动去重,用于最终生成干净的 no.txt）
 beijing_tz = timezone(timedelta(hours=8))  # 所有日志、打印、commit 消息都改成北京时间显示
 
 # ====================== 记录程序开始时间（用于计算总耗时） ======================
 start_time = time.time()
+
 print(f"[{datetime.now(beijing_tz).strftime('%Y-%m-%d %H:%M:%S')}] 🚀 程序启动,开始动态搜索...")
 
 # ====================== 通用限流处理函数 ======================
 def handle_rate_limit(resp, operation_name="未知操作"):
-    """统一处理 GitHub API 限流"""
-    if resp.status_code != 403:
+    """统一处理 GitHub API 限流（包括 403 和 409）"""
+    if resp.status_code not in (403, 409):
         return False
     reset_time = resp.headers.get('X-RateLimit-Reset')
-    remaining = resp.headers.get('X-RateLimit-Remaining', 'Unknown')
     if reset_time:
-        wait_seconds = int(reset_time) - int(time.time()) + 10
-        print(f"[{datetime.now(beijing_tz).strftime('%H:%M:%S')}] ⚠️ {operation_name} 触发限流 | Remaining: {remaining} | 等待 {wait_seconds} 秒...")
+        wait_seconds = int(reset_time) - int(time.time()) + 15
+        print(f"[{datetime.now(beijing_tz).strftime('%H:%M:%S')}] ⚠️ {operation_name} 触发限流 | 等待 {wait_seconds} 秒...")
         time.sleep(max(wait_seconds, 60))
     else:
-        print(f"[{datetime.now(beijing_tz).strftime('%H:%M:%S')}] ⚠️ {operation_name} 触发限流 | 保守等待 90 秒...")
+        print(f"[{datetime.now(beijing_tz).strftime('%H:%M:%S')}] ⚠️ {operation_name} 返回 {resp.status_code}， 触发限流 | 保守等待 90 秒...")
         time.sleep(90)
     return True
 
 # ====================== 安全请求函数（防止卡死） ======================
 def safe_get(url, timeout=25, max_retries=3, operation_name="请求"):
+
     """
-    带重试、超时和限流处理的请求函数
+    带重试、超时和限流(403 409)处理的请求函数
     目的是防止脚本在 GitHub API 响应慢或限流时卡死
     """
     for attempt in range(1, max_retries + 1):
@@ -158,13 +165,21 @@ def safe_get(url, timeout=25, max_retries=3, operation_name="请求"):
             #print(f"[{datetime.now(beijing_tz).strftime('%H:%M:%S')}] 🔄 {operation_name} 第 {attempt}/{max_retries} 次尝试...")
             resp = requests.get(url, headers=headers, timeout=timeout)
 
+
             # 处理限流
             if handle_rate_limit(resp, operation_name):
                 continue
                 
             if resp.status_code != 200:
-                print(f"[{datetime.now(beijing_tz).strftime('%H:%M:%S')}] {operation_name} 返回状态码: {resp.status_code} (尝试 {attempt}/{max_retries})")
-                time.sleep(5)
+
+                wait = 10 + attempt * 8
+                print(f"[{datetime.now(beijing_tz).strftime('%H:%M:%S')}] {operation_name} 返回状态码: {resp.status_code} (尝试 {attempt}/{max_retries})，等待 {wait} 秒后重试...")
+                time.sleep(wait)
+
+
+
+
+
                 continue
                 
             #print(f"[{datetime.now(beijing_tz).strftime('%H:%M:%S')}] {operation_name} 成功")
@@ -175,20 +190,25 @@ def safe_get(url, timeout=25, max_retries=3, operation_name="请求"):
         except requests.exceptions.ConnectionError:
             print(f"[{datetime.now(beijing_tz).strftime('%H:%M:%S')}] ⚠️ {operation_name} 连接错误 (尝试 {attempt}/{max_retries})")
         except Exception as e:
+
+
+
             print(f"[{datetime.now(beijing_tz).strftime('%H:%M:%S')}] ⚠️ {operation_name} 异常: {e} (尝试 {attempt}/{max_retries})")
 
         # 指数退避等待
         wait = 8 * attempt
-        print(f"[{datetime.now(beijing_tz).strftime('%H:%M:%S')}] 等待 {wait} 秒后重试...")
+        print(f"[{datetime.now(beijing_tz).strftime('%H:%M:%S')}]{operation_name} 等待 {wait} 秒后重试...")
         time.sleep(wait)
     
     print(f"[{datetime.now(beijing_tz).strftime('%H:%M:%S')}] ❌ {operation_name} 多次失败，已跳过")
     return None
 
 # ====================== 增强版节点提取函数（大幅优化，支持更多风格） ======================
+
 def extract_nodes_from_text(text):
     """
     增强版节点提取函数 - 支持几乎所有协议和格式
+
     重要逻辑：
     - 直接从文件内容提取节点
     - 返回提取到的节点列表,没有提取到就是空（供上层决定是否保留该 raw 链接）
@@ -207,35 +227,51 @@ def extract_nodes_from_text(text):
     if not text or len(text.strip()) < 10:
         return nodes
 
+
     # 1. 提取标准协议链接（vmess://, vless://, trojan://, ss:// 等）
 
     protocol_pattern = r'(vmess|vless|trojan|ss|ssr|hysteria|hysteria2|tuic|reality)://[^\s<>"\']{15,}'
+
     found = re.findall(protocol_pattern, text, re.IGNORECASE)
     nodes.extend(found)
 
+
     # 2. 特别处理 Shadowsocks ss:// 完整 base64 格式（包括带 # 备注）
     ss_pattern = r'ss://[A-Za-z0-9+/=]+(?:#[^\s<>"\']*)?'
+
     ss_matches = re.findall(ss_pattern, text, re.IGNORECASE)
     nodes.extend(ss_matches)
+
+
 
     # 3. 提取 Clash / Sing-box YAML 单行节点 - {name: ..., server: ..., type: ...}
 
     yaml_single_pattern = r'-\s*\{[^}]*?(?:name|server|port|type|uuid|password|ps|flow|reality-opts|sni|fp|client-fingerprint)[^}]*\}'
     yaml_matches = re.findall(yaml_single_pattern, text, re.IGNORECASE | re.DOTALL)
+
+
+
+
     for match in yaml_matches:
         clean = match.strip()
         if clean and len(clean) > 40 and ('type:' in clean or 'uuid:' in clean or 'password:' in clean):
             clean = re.sub(r'\s+', ' ', clean)  # 清理多余空格
             nodes.append(clean)
 
+
     # 4. 提取 Clash 多行 proxies 格式（从 name: 开始到下一个 name: 或结尾）
     yaml_multi_pattern = r'-\s*name:.*?(?=-\s*name:|\Z)'
+
+
+
+
     multi_matches = re.findall(yaml_multi_pattern, text, re.IGNORECASE | re.DOTALL | re.MULTILINE)
     for match in multi_matches:
         clean = match.strip()
         if clean and len(clean) > 30 and ('server:' in clean or 'type:' in clean):
             clean = re.sub(r'\s+', ' ', clean)
             nodes.append(clean)
+
 
     # 5. JSON 格式 proxies / outbounds 
     # 匹配 proxies: [ { "name": "...", "type": "vless", ... } ]
@@ -247,10 +283,15 @@ def extract_nodes_from_text(text):
             if isinstance(proxies, list):
                 for p in proxies:
                     if isinstance(p, dict):
+
                         node_str = json.dumps(p, ensure_ascii=False)
                         nodes.append(node_str)
     except:
         pass
+
+
+
+
 
     # 6. 新增：匹配文本中出现的 proxies 数组（即使不是完整 JSON）
     proxies_array_pattern = r'"proxies"\s*:\s*\[([\s\S]*?)\]'
@@ -262,6 +303,8 @@ def extract_nodes_from_text(text):
         for obj in objs:
             if '"type"' in obj and ('"vless"' in obj or '"trojan"' in obj or '"ss"' in obj or '"hysteria"' in obj):
                 nodes.append(obj.strip())
+
+
 
     # 7. 提取 raw 订阅链接并加入处理队列
     raw_link_pattern = r'https?://raw\.githubusercontent\.com/([^/\s]+/[^/\s]+)'
@@ -297,6 +340,7 @@ def extract_nodes_from_text(text):
             decoded = base64.b64decode(b64, validate=False).decode('utf-8', errors='ignore')
             for line in decoded.splitlines():
                 line = line.strip()
+
                 if not line:
                     continue
                 if line.startswith(('vmess://', 'vless://', 'trojan://', 'ss://', 'ssr://', 'hysteria://', 'hysteria2://', 'tuic://', 'reality://')):
@@ -305,6 +349,7 @@ def extract_nodes_from_text(text):
                 elif '{' in line and ('type:' in line or 'uuid:' in line or 'password:' in line):
                     nodes.append(line)
         except:
+
             # 尝试去掉前导 // 再解码一次
             try:
                 clean = b64.lstrip('/')
@@ -319,6 +364,8 @@ def extract_nodes_from_text(text):
             except:
                 pass
 
+
+
     # 最终清理：去重 + 过滤明显无效行
     cleaned_nodes = []
     seen = set()
@@ -332,8 +379,11 @@ def extract_nodes_from_text(text):
         cleaned_nodes.append(n)
     return cleaned_nodes
 
+
+
 # ====================== 公共方法：处理单个仓库 ======================
 def process_repo(repo):
+
     """公共方法：处理单个仓库（检查更新时间 + 调用文件树处理）"""
 
     #print(f" [{datetime.now(beijing_tz).strftime('%H:%M:%S')}] 检查仓库 ({checked_count}): https://github.com/{repo}")
@@ -349,40 +399,51 @@ def process_repo(repo):
         if datetime.now(timezone.utc) - commit_time >= timedelta(hours=24):
             return
 
+
+
         #print(f" ✓ 发现新的24h更新仓库 ({checked_count}): https://github.com/{repo}")
         # 调用文件树处理方法
-        process_file_tree(repo)
+        process_file_tree(repo, path="")
     except Exception as e:
         print(f" 处理仓库 https://github.com/{repo} 时发生异常: {e}（已跳过）")
 
 
+
+
+
+
+
+
+
 # ====================== 公共方法：处理文件树（核心逻辑） ======================
-def process_file_tree(repo):
+def process_file_tree(repo, path=""):
 
-    """公共方法：处理仓库的文件树，提取符合条件的订阅文件"""
+    """公共方法：处理仓库的文件树，提取符合条件的订阅文件
+    递归分层处理目录：只有上级目录新鲜，才继续检查子目录或文件
+    这解决了原来对所有文件都查询 commit 的性能爆炸问题
+    """
+    current_path = path or "（根目录）"
+    print(f" [{datetime.now(beijing_tz).strftime('%H:%M:%S')}] 进入目录: {current_path} | 仓库: https://github.com/{repo}")
 
-    print(f" [{datetime.now(beijing_tz).strftime('%H:%M:%S')}] 开始处理文件树: https://github.com/{repo}")
+    tree_url = f"https://api.github.com/repos/{repo}/git/trees/main:{path}" if path else \
+               f"https://api.github.com/repos/{repo}/git/trees/main"
 
-    tree_url = f"https://api.github.com/repos/{repo}/git/trees/main?recursive=1"
-    t_resp = safe_get(tree_url, timeout=25, operation_name=f"文件树 {repo}")
+    t_resp = safe_get(tree_url, timeout=25, operation_name=f"文件树 {current_path}")
+
+
+
+
     if t_resp is None or t_resp.status_code != 200:
         print(f" [{datetime.now(beijing_tz).strftime('%H:%M:%S')}] 文件树请求失败或超时: {github_url}")
         return
-    
-    for file in t_resp.json().get("tree", []):
-        if file["type"] != "blob":
-            continue
-        fname = file["path"].lower()
-        # 把 README.md 也当作普通文件处理
-        if not fname.endswith((".yaml", ".yml", ".txt", ".json", ".base64", ".list", "readme.md")):
-            continue
-        if not any(k in fname for k in ["clash", "v2ray", "trojan", "hysteria", "hysteria2", "vless", "vmess", "ss", "ssr", "tuic", "reality", "sub", "proxy", "node", "base64", "config", "list", "readme"]):
-            continue
 
+    for item in t_resp.json().get("tree", []):
+        item_path = item["path"]
+        full_item_path = f"{path}/{item_path}" if path else item_path
 
-        # 对每个具体文件单独检查最后 commit 时间（解决多层嵌套问题）
-        file_commit_url = f"https://api.github.com/repos/{repo}/commits?path={file['path']}&per_page=1"
-        f_resp = safe_get(file_commit_url, timeout=12, operation_name=f"文件 {file['path']} commit 查询")
+        # 检查该路径的 commit 时间
+        commit_url = f"https://api.github.com/repos/{repo}/commits?path={full_item_path}&per_page=1"
+        f_resp = safe_get(commit_url, timeout=12, operation_name=f"路径 {full_item_path} commit 查询")
         if f_resp is None or f_resp.status_code != 200:
             continue
         
@@ -391,16 +452,32 @@ def process_file_tree(repo):
             file_time = datetime.fromisoformat(file_time_str.replace("Z", "+00:00"))
             if datetime.now(timezone.utc) - file_time >= timedelta(hours=24):
                 continue
-            
-            # 生成完整的 raw 链接
-            file_url = f"https://raw.githubusercontent.com/{repo}/main/{file['path']}"
+        except:
+            continue
+
+        # 如果是目录 → 递归进入
+        if item["type"] == "tree":
+            process_directory(repo, full_item_path)
+
+        # 如果是文件 → 处理订阅文件
+        elif item["type"] == "blob":
+            fname = item_path.lower()
+            if not fname.endswith((".yaml", ".yml", ".txt", ".json", ".base64", ".list", "readme.md")):
+                continue
+            if not any(k in fname for k in ["clash", "v2ray", "trojan", "hysteria", "hysteria2", "vless", "vmess", "ss", "ssr", "tuic", "reality", "sub", "proxy", "node", "base64", "config", "list", "readme"]):
+                continue
+
+            file_url = f"https://raw.githubusercontent.com/{repo}/main/{full_item_path}"
             #print(f" 🔄 处理订阅文件: {file_url}")   # 显示完整 raw 链接
             
             # 直接请求一次文件内容，然后提取节点
+
+
             resp = safe_get(file_url, timeout=20, operation_name="获取订阅文件内容")
             if resp is None or resp.status_code != 200:
                 print(f" 📄 文件 {file_url} ❌ 下载失败")
                 continue
+
                 
             # 直接调用节点提取函数
             content = resp.text
@@ -411,22 +488,22 @@ def process_file_tree(repo):
 
                 # === 区分三种情况的核心逻辑 ===
                 before_count = len(unique_nodes)
-                unique_nodes.update(nodes)        #把节点加入去重集合
-                after_count = len(unique_nodes)
+                #节点加入去重集合
+                unique_nodes.update(nodes)
+                added_count = len(unique_nodes) - before_count
 
-                added_count = after_count - before_count
-                
                 if added_count > 0:
+
+
                     all_links.append(file_url)    #有新增节点, 把链接加入
                     #print(f" 📄 文件 {file_url} ✅ 提取成功 | 新增 {added_count} 条新节点（共 {len(nodes)} 条）")
-                if added_count == 0:
-                    # 如果全部重复，则不保留该 raw 链接
-                    all_links.pop()   # 移除刚才加入的链接
-                    #print(f" 📄 文件 {file_url} ⚪ 全部重复 | 提取 {len(nodes)} 条节点（均已存在）")
 
                 #搜索词提供链接计数
                 global query_links_count
-                query_links_count += 1 if added_count > 0 else 0
+
+
+
+                query_links_count += 1
             else:
                 # 情况3：没有提取出任何节点
                 print(f" 📄 文件 {file_url} ❌ 提取失败 | 没有提取到有效节点")
@@ -439,6 +516,7 @@ def process_file_tree(repo):
 for query_idx, query in enumerate(QUERIES, 1):
     print(f"\n[{datetime.now(beijing_tz).strftime('%H:%M:%S')}] 🔎 开始搜索第 {query_idx}/{len(QUERIES)} 个关键词: {query}")
 
+
     query_links_count = 0   # 当前关键词贡献的链接数量
 
     page = 1
@@ -447,10 +525,8 @@ for query_idx, query in enumerate(QUERIES, 1):
         
         url = f"https://api.github.com/search/repositories?q={query}&sort=updated&order=desc&per_page=100&page={page}"
         resp = safe_get(url, timeout=30, operation_name=f"搜索关键词第{page}页")
-        
-        if resp is None:
-            print(f"[{datetime.now(beijing_tz).strftime('%H:%M:%S')}] 搜索请求失败，跳过当前页")
-            break
+
+
         
         if resp.status_code != 200:
             print(f"[{datetime.now(beijing_tz).strftime('%H:%M:%S')}] 搜索失败，第{page}页状态码: {resp.status_code}")
@@ -471,8 +547,11 @@ for query_idx, query in enumerate(QUERIES, 1):
             # 调用仓库处理方法（会检查 commit 时间 + 处理文件树 + 提取节点）
             process_repo(repo)
             time.sleep(2)   # (秒)在处理完一个仓库后（不管成功还是失败）轻微等待，避免请求过快
+
+
         page += 1
-        time.sleep(10)   # (秒)翻页间隔，每页处理完后强制冷却，降低 API 压力
+        time.sleep(12)   # (秒)翻页间隔，每页处理完后强制冷却，降低 API 压力
+
 
     print(f"[{datetime.now(beijing_tz).strftime('%H:%M:%S')}] └─ 本关键词贡献 {query_links_count} 条有效链接")
 
@@ -497,6 +576,7 @@ if unique_nodes:
 else:
     print(f"\n[{datetime.now(beijing_tz).strftime('%H:%M:%S')}] ⚠️ 未提取到任何有效节点")
 
+
 # 生成 no.txt 的 raw 链接并加入到 no_li.txt
 repo_name = os.getenv("GITHUB_REPOSITORY", "2530ZZZ/cooo")
 no_txt_raw_url = f"https://raw.githubusercontent.com/{repo_name}/main/no.txt"
@@ -509,6 +589,7 @@ with open("no_li.txt", "w", encoding="utf-8") as f:
     f.write("\n".join(all_links))
 
 
+
 # ====================== 日志信息处理 ======================
 # 计算总耗时
 total_seconds = int(time.time() - start_time)
@@ -517,34 +598,26 @@ minutes = (total_seconds % 3600) // 60
 seconds = total_seconds % 60
 runtime_str = f"{hours}小时 {minutes}分 {seconds}秒" if hours > 0 else f"{minutes}分 {seconds}秒"
 
+
 # ====================== no.txt 新旧节点对比 ======================
 
 new_nodes = unique_nodes
-added_nodes = new_nodes - old_nodes
-removed_nodes = old_nodes - new_nodes
-kept_nodes = new_nodes & old_nodes
-
 print(f"\n📈 no.txt 节点对比报告")
 print(f" 新 no.txt 节点总数 : {len(new_nodes):,} 条")
 print(f" 旧 no.txt 节点总数 : {len(old_nodes):,} 条")
-print(f" 新增节点 : {len(added_nodes):,} 条 (+{len(added_nodes)})")
-print(f" 去除节点 : {len(removed_nodes):,} 条 (-{len(removed_nodes)})")
-print(f" 保留节点（新旧都有） : {len(kept_nodes):,} 条")
+print(f" 新增节点 : {len(new_nodes - old_nodes):,} 条")
+print(f" 去除节点 : {len(old_nodes - new_nodes):,} 条")
+print(f" 保留节点 : {len(new_nodes & old_nodes):,} 条")
+
 
 
 # ====================== no_li.txt 新旧链接对比 ======================
 
 new_links = set(all_links)
-added_links = new_links - old_links
-removed_links = old_links - new_links
-kept_links = new_links & old_links
-
-print(f"\n🔗 no_li.txt 链接对比报告")
 print(f" 新 no_li.txt 链接总数 : {len(new_links):,} 条")
 print(f" 旧 no_li.txt 链接总数 : {len(old_links):,} 条")
-print(f" 新增链接 : {len(added_links):,} 条 (+{len(added_links)})")
-print(f" 去除链接 : {len(removed_links):,} 条 (-{len(removed_links)})")
-print(f" 保留链接（新旧都有） : {len(kept_links):,} 条")
+print(f" 新增链接 : {len(new_links - old_links):,} 条")
+print(f" 去除链接 : {len(old_links - new_links):,} 条")
 
 
 # ====================== 最终总结日志 ======================
