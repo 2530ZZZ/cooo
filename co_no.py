@@ -222,11 +222,13 @@ def safe_get(url, timeout=12, max_retries=2, operation_name="请求"):
             print(f"[{datetime.now(beijing_tz).strftime('%H:%M:%S')}] ⚠️ {operation_name} 连接错误 (尝试 {attempt}/{max_retries})")
         except Exception as e:
             print(f"[{datetime.now(beijing_tz).strftime('%H:%M:%S')}] ⚠️ {operation_name} 异常: {type(e).__name__}: {e} (尝试 {attempt}/{max_retries})")
+
         
         # 指数退避等待
         wait = 5 * attempt
         print(f"[{datetime.now(beijing_tz).strftime('%H:%M:%S')}]{operation_name} 等待 {wait} 秒后重试...")
         time.sleep(wait)
+
     
     # 【只有全部重试都失败，才会走到这里】
     print(f"[{datetime.now(beijing_tz).strftime('%H:%M:%S')}] ❌ {operation_name} 多次失败，已跳过")
@@ -240,8 +242,9 @@ def extract_nodes_from_text(text):
     """
     增强版节点提取函数 - 支持几乎所有协议和格式
     重要改进：
-    - 使用非捕获组 + 更宽松的匹配规则，现在能完整提取你提供的 trojan://、hysteria2://、hy2://、ss://（带 plugin）等所有格式
 
+
+    - 使用非捕获组 + 更宽松的匹配规则，现在能完整提取你提供的 trojan://、hysteria2://、hy2://、ss://（带 plugin）等所有格式
 
     重要逻辑：
     - 直接从文件内容提取节点
@@ -333,7 +336,8 @@ def extract_nodes_from_text(text):
         if not repo_path or '/' not in repo_path:
             continue
         # 如果这个仓库还没有处理过并且没在黑名单，就当作正常发现的仓库处理
-        if repo_path not in seen_repos and not in blacklist_repos:
+
+        if repo_path not in seen_repos and f"https://github.com/{repo_path}" not in blacklist_repos:
             #print(f" 🔗 从文本中发现 raw 订阅链接 → https://github.com/{repo_path} ，将其仓库加入处理队列")
             # 防止重复处理
             seen_repos.add(repo_path)
@@ -498,7 +502,6 @@ def process_file_tree(repo, path=""):
 
 
             if nodes:
-
                 # 只要提取到节点，就标记该仓库有效,就不用加入黑名单
                 repo_has_nodes = True
                 # === 区分三种情况的核心逻辑 ===
