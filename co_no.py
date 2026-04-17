@@ -123,12 +123,6 @@ QUERIES = [
 ]
 
 # ==================== 全局变量 ====================
-
-
-
-
-
-
 all_links = []                  # 最终收集到的所有订阅链接（no_li.txt）
 seen_repos = set()              # 已检查过的仓库（实现跳过重复仓库,防止重复处理）
 blacklist_repos = set()         # ljck.txt 黑名单仓库（持久化排除无用仓库）
@@ -187,7 +181,6 @@ retry_strategy = Retry(
     total=2,                    # 最多重试2次
     backoff_factor=1,           # 每次重试间隔逐渐增加（1秒、2秒...）
     status_forcelist=[429, 500, 502, 503, 504],  # 这些状态码才触发重试
-
 )
 
 # HTTPAdapter：配置连接池和重试策略
@@ -306,7 +299,6 @@ def extract_nodes_from_text(text):
     if not text or len(text.strip()) < 10:
         return nodes
 
-
     # ==================== 阶段1：提取 markdown 代码块并递归处理 ====================
     # 支持 ```xxx ... ``` 和 `xxx` 两种代码块
     # 使用 (?:```|`) 避免捕获组问题
@@ -319,7 +311,6 @@ def extract_nodes_from_text(text):
             nodes.extend(extract_nodes_from_text(block_content))
 
     # ==================== 阶段2：大段 base64 处理 ====================
-
     base64_full_pattern = r'[A-Za-z0-9+/=]{100,}'
     for candidate in re.findall(base64_full_pattern, text):
         try:
@@ -337,19 +328,16 @@ def extract_nodes_from_text(text):
 
 
 
-
     # ==================== 阶段3：标准协议链接（全协议支持） ====================
     # 使用非捕获组，确保返回完整链接
     protocol_pattern = r'(?i)(?:vmess|vless|trojan|ss|ssr|hysteria|hysteria2|hy2|tuic|reality)://[^\s<>"\']+'
     nodes.extend(re.findall(protocol_pattern, text))
 
 
-
     # ==================== 阶段4：Shadowsocks ss:// 带 plugin 格式 ====================
 
     ss_pattern = r'ss://[A-Za-z0-9+/=]+(?:\?[^\s<>"\']*)?(?:#[^\s<>"\']*)?'
     nodes.extend(re.findall(ss_pattern, text, re.IGNORECASE))
-
 
 
     # ==================== 阶段5：Clash / Sing-box YAML 单行节点 ====================
@@ -364,7 +352,6 @@ def extract_nodes_from_text(text):
             nodes.append(clean)
 
     # ==================== 阶段6：Clash YAML 多行 proxies ====================
-
     yaml_multi_pattern = r'-\s*name:.*?(?=-\s*name:|\Z)'
 
 
@@ -373,7 +360,6 @@ def extract_nodes_from_text(text):
         clean = re.sub(r'\s+', ' ', match.strip())
         if len(clean) > 30 and ('server:' in clean or 'type:' in clean):
             nodes.append(clean)
-
 
 
     # ==================== 阶段7：JSON 格式 proxies / outbounds ====================
@@ -392,18 +378,16 @@ def extract_nodes_from_text(text):
         pass
 
     # ==================== 阶段8：文本中 proxies 数组 ====================
-
     for arr in re.findall(r'"proxies"\s*:\s*\[([\s\S]*?)\]', text, re.IGNORECASE):
         for obj in re.findall(r'\{[\s\S]*?\}', arr):
             if any(proto in obj.lower() for proto in ["trojan", "hysteria2", "hy2", "vmess", "vless", "ss"]):
                 nodes.append(obj.strip())
 
 
-
     """
     # ==================== 阶段9：raw 订阅链接 ====================
 
-    raw_pattern = r'https?://raw[.]githubusercontent[.]com/[^\s<>"\']+'
+    raw_pattern = r'https?://raw[.]githubusercontent[.]com/[^ \t\n<>"\']+'
     for link in re.findall(raw_pattern, text, re.IGNORECASE):
         try:
             repo_path = '/'.join(link.split('githubusercontent.com/')[1].split('/')[:2])
@@ -414,8 +398,6 @@ def extract_nodes_from_text(text):
             process_repo(repo_path)
         except:
                 pass
-
-
     """
 
 
@@ -445,7 +427,6 @@ def process_repo(repo):
         return
 
     # 获取仓库默认分支（解决 main/master 不一致问题）
-
     repo_info_url = f"https://api.github.com/repos/{repo}"
     repo_resp = safe_get(repo_info_url, timeout=12, operation_name=f"仓库 {repo} 信息查询")
     if repo_resp is None or repo_resp.status_code != 200:
@@ -465,7 +446,6 @@ def process_repo(repo):
         if datetime.now(timezone.utc) - commit_time >= timedelta(hours=24):
             return
 
-
         #print(f" ✓ 发现新的24h更新仓库 ({checked_count}): https://github.com/{repo}")
         # 调用文件树处理方法
         process_file_tree(repo, path="", branch=default_branch)
@@ -478,6 +458,12 @@ def process_file_tree(repo, path="", branch="main"):
     """公共方法：处理仓库的文件树，提取符合条件的订阅文件
     递归分层处理目录：只有上级目录新鲜，才继续检查子目录或文件
     这解决了原来对所有文件都查询 commit 的性能爆炸问题
+
+    【本次重大修改】
+    - 完全切换到 Contents API（/contents），不再使用 git/trees?recursive=1
+    - Contents API 对根目录文件更稳定，不会再出现“只返回2个条目”的情况
+    - 继续保留你原来的“per-directory commit 判断 + 递归”逻辑
+    - 速度稍慢一点，但可靠性大幅提升，符合你当前的需求
     """
     # 用于标记该仓库是否提取到任何节点（用于 ljck.txt 黑名单）
     # 使用 list 作为 mutable 对象，在递归中共享标志（关键修复）
@@ -487,20 +473,21 @@ def process_file_tree(repo, path="", branch="main"):
     current_path = path or "（根目录）"
     print(f" [{datetime.now(beijing_tz).strftime('%H:%M:%S')}] 进入目录: {current_path} | 仓库: https://github.com/{repo} | 分支: {branch}")
 
-    # 【关键修复】添加 recursive=1，让 GitHub 返回仓库全部文件（包括根目录 config.txt）
-    tree_url = f"https://api.github.com/repos/{repo}/git/trees/{branch}:{path}?recursive=1" if path else \
-               f"https://api.github.com/repos/{repo}/git/trees/{branch}?recursive=1"
+    # 使用 Contents API 获取当前目录内容（更稳定）
+    contents_url = f"https://api.github.com/repos/{repo}/contents/{path}" if path else \
+                   f"https://api.github.com/repos/{repo}/contents"
 
-    t_resp = safe_get(tree_url, timeout=25, operation_name=f"文件树 {current_path}")
-    if t_resp is None or t_resp.status_code != 200:
-        print(f" [{datetime.now(beijing_tz).strftime('%H:%M:%S')}] 文件树请求失败或超时: https://github.com/{repo}")
+    c_resp = safe_get(contents_url, timeout=20, operation_name=f"Contents API {current_path}")
+    if c_resp is None or c_resp.status_code != 200:
+        print(f" [{datetime.now(beijing_tz).strftime('%H:%M:%S')}] Contents API 请求失败或超时: https://github.com/{repo}")
         return
 
+    items = c_resp.json()
+    print(f" [{datetime.now(beijing_tz).strftime('%H:%M:%S')}] Contents API 加载成功，共 {len(items)} 个条目")
     # 循环仓库文件树查询提取节点
-    print(f" [{datetime.now(beijing_tz).strftime('%H:%M:%S')}] 文件树加载成功，共 {len(t_resp.json().get('tree', []))} 个条目")
-
-    for item in t_resp.json().get("tree", []):
+    for item in items:
         item_path = item["path"]
+        item_type = item["type"]          # "file" 或 "dir"
         full_item_path = f"{path}/{item_path}" if path else item_path
 
         # 检查该路径的 commit 时间
@@ -521,11 +508,11 @@ def process_file_tree(repo, path="", branch="main"):
             continue
 
         # 如果是目录 → 递归进入
-        if item["type"] == "tree":
+        if item_type == "dir":
             process_file_tree(repo, full_item_path, branch)
 
         # 如果是文件 → 处理订阅文件
-        elif item["type"] == "blob":
+        elif item_type == "file":
             fname = item_path.lower()
             if not fname.endswith((".yaml", ".yml", ".txt", ".json", ".base64", ".list", "readme.md")):
                 continue
