@@ -20,7 +20,44 @@ headers = {
 
 
 QUERIES = [
+    # ==================== 1. 基础高频 + 通用词 ====================
+    "free nodes",
+    "free proxy nodes",
+    "free v2ray nodes",
+    "free clash nodes",
+    "free trojan nodes",
+    "free hysteria nodes",
+    "free vless nodes",
+    "free hysteria2 nodes",
+    "free tuic nodes",
+    "free reality nodes",
+    "free singbox nodes",
 
+    # ==================== 2. 知名主流项目（高价值） ====================
+    "ACL4SSR",
+    "ACL4SSR ACL",
+    "subconverter",
+    "subconverter subscription",
+    "v2rayN",
+    "v2rayNG",
+    "Clash.Meta",
+    "mihomo",
+    "Clash for Windows",
+    "Hiddify",
+    "Shadowrocket",
+    "Quantumult X",
+    "Stash",
+    "sing-box subscription",
+
+    # ==================== 3. 订阅相关高频词 ====================
+    "clash subscription github",
+    "v2ray subscription github",
+    "trojan subscription github",
+    "hysteria2 subscription",
+    "singbox subscription",
+    "free subscription github",
+    "daily subscription",
+    "base64 subscription",
 
     # ==================== 4. 中文高频搜索词 ====================
     "免费节点",
@@ -43,10 +80,55 @@ QUERIES = [
     "节点",
     "代理",
 
+    # ==================== 5. 混合 OR 组合（覆盖最广） ====================
 
+    "免费 (clash OR v2ray OR trojan OR hysteria OR hysteria2 OR tuic OR reality OR singbox) (订阅 OR 节点 OR 机场)",
+    "clash (订阅 OR 配置 OR 节点 OR 免费) github",
+    "v2ray (订阅 OR 配置 OR 节点) github",
+    "trojan (订阅 OR 节点) github",
+    "hysteria2 (订阅 OR 节点) github",
+
+    # ==================== 6. 其他重要变体与收集器 ====================
+    "free proxy daily github",
+    "free nodes daily",
+    "proxy collector github",
+    "v2ray collector github",
+    "clash collector github",
+    "TelegramV2rayCollector",
+    "ProxyCollector",
+    "V2RAY-CLASH-BASE64-Subscription",
+    "V2RayRoot subscription",
+    "airport free nodes github",
+    "free airport nodes",
+    "free shadowrocket nodes",
+    "free hiddify nodes",
+    "free v2rayng nodes",
+    "free clash meta nodes",
+    "free mihomo nodes",
+    "free sing-box nodes github",
+    "free ss nodes github",
+    "free ssr nodes github",
+
+    # ==================== 7. 额外高价值关键词 ====================
+
+    "sub list github",
+    "节点列表 github",
+    "免费节点列表",
+    "clash yaml github",
+    "vless free nodes github",
+    "reality free nodes github",
+    "tuic free nodes github",
+    "subconverter list",
+    "ACL4SSR list"
 ]
 
 # ==================== 全局变量 ====================
+
+
+
+
+
+
 all_links = []                  # 最终收集到的所有订阅链接（no_li.txt）
 seen_repos = set()              # 已检查过的仓库（实现跳过重复仓库,防止重复处理）
 blacklist_repos = set()         # ljck.txt 黑名单仓库（持久化排除无用仓库）
@@ -200,8 +282,6 @@ def extract_nodes_from_text(text):
 
 
 
-
-
     - 多阶段提取：base64 → 协议链接 → YAML/JSON → 清理
 
 
@@ -336,7 +416,6 @@ def extract_nodes_from_text(text):
                 pass
 
 
-
     """
 
 
@@ -366,6 +445,7 @@ def process_repo(repo):
         return
 
     # 获取仓库默认分支（解决 main/master 不一致问题）
+
     repo_info_url = f"https://api.github.com/repos/{repo}"
     repo_resp = safe_get(repo_info_url, timeout=12, operation_name=f"仓库 {repo} 信息查询")
     if repo_resp is None or repo_resp.status_code != 200:
@@ -385,6 +465,7 @@ def process_repo(repo):
         if datetime.now(timezone.utc) - commit_time >= timedelta(hours=24):
             return
 
+
         #print(f" ✓ 发现新的24h更新仓库 ({checked_count}): https://github.com/{repo}")
         # 调用文件树处理方法
         process_file_tree(repo, path="", branch=default_branch)
@@ -392,7 +473,7 @@ def process_repo(repo):
         print(f" 处理仓库 https://github.com/{repo} 时发生异常: {e}（已跳过）")
 
 # ====================== 公共方法：处理文件树（核心逻辑） ======================
-def process_file_tree(repo, path=""):
+def process_file_tree(repo, path="", branch="main"):
 
     """公共方法：处理仓库的文件树，提取符合条件的订阅文件
     递归分层处理目录：只有上级目录新鲜，才继续检查子目录或文件
