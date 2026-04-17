@@ -430,8 +430,8 @@ def process_file_tree(repo, path=""):
     递归分层处理目录：只有上级目录新鲜，才继续检查子目录或文件
     这解决了原来对所有文件都查询 commit 的性能爆炸问题
     """
-
-    
+    # 仓库是否提取节点
+    resp_node_count = false
     current_path = path or "（根目录）"
     print(f" [{datetime.now(beijing_tz).strftime('%H:%M:%S')}] 进入目录: {current_path} | 仓库: https://github.com/{repo}")
 
@@ -441,8 +441,10 @@ def process_file_tree(repo, path=""):
     t_resp = safe_get(tree_url, timeout=25, operation_name=f"文件树 {current_path}")
     if t_resp is None or t_resp.status_code != 200:
         print(f" [{datetime.now(beijing_tz).strftime('%H:%M:%S')}] 文件树请求失败或超时: https://github.com/{repo}")
+
         return
 
+    # 循环仓库文件树查询提取节点
     for item in t_resp.json().get("tree", []):
         item_path = item["path"]
         full_item_path = f"{path}/{item_path}" if path else item_path
@@ -493,6 +495,8 @@ def process_file_tree(repo, path=""):
 
 
             if nodes:
+                # 只要仓库有节点就不用加入黑名单
+                resp_node_count = true
                 # === 区分三种情况的核心逻辑 ===
                 before_count = len(unique_nodes)
                 #节点加入去重集合
@@ -514,12 +518,20 @@ def process_file_tree(repo, path=""):
             else:
 
                 # 情况3：没有提取出任何节点
-                # 如果一个仓库完全没有提取到节点，就加入 ljck.txt 黑名单
-                github_url = f"https://github.com/{repo}"
-                print(f" 📄 文件 {file_url} ❌ 提取失败 | 没有提取到有效节点 → 加入 ljck.txt 黑名单")
-                with open("ljck.txt", "a", encoding="utf-8") as f:
-                    f.write(github_url + "\n")
-                blacklist_repos.add(github_url)
+                print(f" 📄 文件 {file_url} ❌ 提取失败 | 没有提取到有效节点")
+
+
+
+
+    # 如果一个仓库完全没有提取到节点，就加入 ljck.txt 黑名单
+    if resp_node_count = false:
+        github_url = f"https://github.com/{repo}"
+        print(f" 📄 文件 {file_url} ❌ 提取失败 | 没有提取到有效节点 → 加入 ljck.txt 黑名单")
+        with open("ljck.txt", "a", encoding="utf-8") as f:
+            f.write(github_url + "\n")
+        blacklist_repos.add(github_url)
+
+
 
 # ====================== 主程序 ======================
 
