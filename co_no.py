@@ -21,6 +21,7 @@ headers = {
 
 QUERIES = [
 
+
     # ==================== 4. 中文高频搜索词 ====================
     "免费节点",
     "免费clash订阅",
@@ -41,6 +42,7 @@ QUERIES = [
     "梯子",
     "节点",
     "代理",
+
 
 ]
 
@@ -96,11 +98,14 @@ session = requests.Session()
 
 
 
+
+
 # Retry 策略：最多重试2次，只对特定错误码重试
 retry_strategy = Retry(
     total=2,                    # 最多重试2次
     backoff_factor=1,           # 每次重试间隔逐渐增加（1秒、2秒...）
     status_forcelist=[429, 500, 502, 503, 504],  # 这些状态码才触发重试
+
 )
 
 # HTTPAdapter：配置连接池和重试策略
@@ -113,6 +118,7 @@ adapter = HTTPAdapter(
 # 把适配器挂载到 https 和 http
 session.mount("https://", adapter)
 session.mount("http://", adapter)
+
 
 
 # ====================== 安全请求函数（防止卡死 加强防挂起） ======================
@@ -138,14 +144,16 @@ def safe_get(url, timeout=12, max_retries=2, operation_name="请求"):
 
 
 
+
                 # 404 快速失败，不进行长时间等待
-                print(f"[{datetime.now(beijing_tz).strftime('%H:%M:%S')}] {operation_name} 返回 404（资源不存在，可能默认分支不是 main），快速跳过")
+                print(f"[{datetime.now(beijing_tz).strftime('%H:%M:%S')}] {operation_name} 返回 404（资源不存在），快速跳过")
                 return None
 
             print(f"[{datetime.now(beijing_tz).strftime('%H:%M:%S')}] {operation_name} 返回状态码: {resp.status_code} (尝试 {attempt}/{max_retries})")
 
             if resp.status_code in (403, 409):
                 reset_time = resp.headers.get('X-RateLimit-Reset')
+
 
 
                 if reset_time:
@@ -188,6 +196,12 @@ def extract_nodes_from_text(text):
     - 优先处理大段 base64（很多订阅文件是整行 base64 编码）
     - 支持 trojan://、hysteria2://、hy2://、ss:// 等带复杂参数、plugin 的格式
     - 支持 markdown 代码块提取（``` 或 ` 包裹的内容）
+
+
+
+
+
+
     - 多阶段提取：base64 → 协议链接 → YAML/JSON → 清理
 
 
@@ -212,17 +226,20 @@ def extract_nodes_from_text(text):
     if not text or len(text.strip()) < 10:
         return nodes
 
+
     # ==================== 阶段1：提取 markdown 代码块并递归处理 ====================
     # 支持 ```xxx ... ``` 和 `xxx` 两种代码块
-    code_block_pattern = r'```(?:[\w]*)\n([\s\S]*?)\n```|`([^`\n]+)`'
+    # 使用 (?:```|`) 避免捕获组问题
+    code_block_pattern = r'(?:```(?:[\w]*)\n?)([\s\S]*?)(?:\n?```)|`([^`\n]+)`'
     for match in re.findall(code_block_pattern, text):
         # match 是 tuple，第一个是 ``` 块内容，第二个是 ` 块内容
         block_content = match[0] if match[0] else match[1]
-        if block_content:
-            # 递归调用自身处理代码块内容（关键！）
+        if block_content and block_content.strip():
+            # 递归调用自身处理代码块内容（关键！这样 base64、协议等都能被提取）
             nodes.extend(extract_nodes_from_text(block_content))
 
     # ==================== 阶段2：大段 base64 处理 ====================
+
     base64_full_pattern = r'[A-Za-z0-9+/=]{100,}'
     for candidate in re.findall(base64_full_pattern, text):
         try:
@@ -232,10 +249,13 @@ def extract_nodes_from_text(text):
                 candidate += '=' * (4 - padding)
             decoded = base64.b64decode(candidate, validate=False).decode('utf-8', errors='ignore')
 
+
             # 解码后递归提取（重要！）
             nodes.extend(extract_nodes_from_text(decoded))
         except:
             pass
+
+
 
 
     # ==================== 阶段3：标准协议链接（全协议支持） ====================
@@ -243,14 +263,19 @@ def extract_nodes_from_text(text):
     protocol_pattern = r'(?i)(?:vmess|vless|trojan|ss|ssr|hysteria|hysteria2|hy2|tuic|reality)://[^\s<>"\']+'
     nodes.extend(re.findall(protocol_pattern, text))
 
+
+
     # ==================== 阶段4：Shadowsocks ss:// 带 plugin 格式 ====================
 
     ss_pattern = r'ss://[A-Za-z0-9+/=]+(?:\?[^\s<>"\']*)?(?:#[^\s<>"\']*)?'
     nodes.extend(re.findall(ss_pattern, text, re.IGNORECASE))
 
+
+
     # ==================== 阶段5：Clash / Sing-box YAML 单行节点 ====================
 
     yaml_single_pattern = r'-\s*\{[^}]*?(?:name|server|port|type|uuid|password|ps|flow|reality-opts|sni|fp|client-fingerprint)[^}]*\}'
+
 
     yaml_matches = re.findall(yaml_single_pattern, text, re.IGNORECASE | re.DOTALL)
     for match in yaml_matches:
@@ -259,13 +284,17 @@ def extract_nodes_from_text(text):
             nodes.append(clean)
 
     # ==================== 阶段6：Clash YAML 多行 proxies ====================
+
     yaml_multi_pattern = r'-\s*name:.*?(?=-\s*name:|\Z)'
+
 
     multi_matches = re.findall(yaml_multi_pattern, text, re.IGNORECASE | re.DOTALL | re.MULTILINE)
     for match in multi_matches:
         clean = re.sub(r'\s+', ' ', match.strip())
         if len(clean) > 30 and ('server:' in clean or 'type:' in clean):
             nodes.append(clean)
+
+
 
     # ==================== 阶段7：JSON 格式 proxies / outbounds ====================
 
@@ -283,14 +312,17 @@ def extract_nodes_from_text(text):
         pass
 
     # ==================== 阶段8：文本中 proxies 数组 ====================
+
     for arr in re.findall(r'"proxies"\s*:\s*\[([\s\S]*?)\]', text, re.IGNORECASE):
         for obj in re.findall(r'\{[\s\S]*?\}', arr):
             if any(proto in obj.lower() for proto in ["trojan", "hysteria2", "hy2", "vmess", "vless", "ss"]):
                 nodes.append(obj.strip())
 
 
+
     """
     # ==================== 阶段9：raw 订阅链接 ====================
+
     raw_pattern = r'https?://raw[.]githubusercontent[.]com/[^\s<>"\']+'
     for link in re.findall(raw_pattern, text, re.IGNORECASE):
         try:
@@ -302,6 +334,8 @@ def extract_nodes_from_text(text):
             process_repo(repo_path)
         except:
                 pass
+
+
 
     """
 
@@ -331,7 +365,14 @@ def process_repo(repo):
         print(f" [{datetime.now(beijing_tz).strftime('%H:%M:%S')}] 仓库 {repo} 在 ljck.txt 黑名单中，已跳过")
         return
 
-    #print(f" [{datetime.now(beijing_tz).strftime('%H:%M:%S')}] 检查仓库 ({checked_count}): https://github.com/{repo}")
+    # 获取仓库默认分支（解决 main/master 不一致问题）
+    repo_info_url = f"https://api.github.com/repos/{repo}"
+    repo_resp = safe_get(repo_info_url, timeout=12, operation_name=f"仓库 {repo} 信息查询")
+    if repo_resp is None or repo_resp.status_code != 200:
+        return
+    default_branch = repo_resp.json().get("default_branch", "main")
+    print(f" [{datetime.now(beijing_tz).strftime('%H:%M:%S')}] 仓库 {repo} 默认分支为: {default_branch}")
+    #print(f" [{datetime.now(beijing_tz).strftime('%H:%M:%S')}] 检查仓库 : https://github.com/{repo}")
 
     commit_url = f"https://api.github.com/repos/{repo}/commits?per_page=1"
     c_resp = safe_get(commit_url, timeout=12, operation_name=f"仓库 {repo} commit 查询")
@@ -346,7 +387,7 @@ def process_repo(repo):
 
         #print(f" ✓ 发现新的24h更新仓库 ({checked_count}): https://github.com/{repo}")
         # 调用文件树处理方法
-        process_file_tree(repo, path="")
+        process_file_tree(repo, path="", branch=default_branch)
     except Exception as e:
         print(f" 处理仓库 https://github.com/{repo} 时发生异常: {e}（已跳过）")
 
@@ -363,12 +404,11 @@ def process_file_tree(repo, path=""):
     has_nodes = [False]
 
     current_path = path or "（根目录）"
-    print(f" [{datetime.now(beijing_tz).strftime('%H:%M:%S')}] 进入目录: {current_path} | 仓库: https://github.com/{repo}")
+    print(f" [{datetime.now(beijing_tz).strftime('%H:%M:%S')}] 进入目录: {current_path} | 仓库: https://github.com/{repo} | 分支: {branch}")
 
-
-
-    tree_url = f"https://api.github.com/repos/{repo}/git/trees/main:{path}" if path else \
-               f"https://api.github.com/repos/{repo}/git/trees/main"
+    # 【关键修复】添加 recursive=1，让 GitHub 返回仓库全部文件（包括根目录 config.txt）
+    tree_url = f"https://api.github.com/repos/{repo}/git/trees/{branch}:{path}?recursive=1" if path else \
+               f"https://api.github.com/repos/{repo}/git/trees/{branch}?recursive=1"
 
     t_resp = safe_get(tree_url, timeout=25, operation_name=f"文件树 {current_path}")
     if t_resp is None or t_resp.status_code != 200:
@@ -376,6 +416,8 @@ def process_file_tree(repo, path=""):
         return
 
     # 循环仓库文件树查询提取节点
+    print(f" [{datetime.now(beijing_tz).strftime('%H:%M:%S')}] 文件树加载成功，共 {len(t_resp.json().get('tree', []))} 个条目")
+
     for item in t_resp.json().get("tree", []):
         item_path = item["path"]
         full_item_path = f"{path}/{item_path}" if path else item_path
@@ -392,23 +434,24 @@ def process_file_tree(repo, path=""):
             if datetime.now(timezone.utc) - file_time >= timedelta(hours=24):
                 continue
 
+
         except Exception as e:
             #print(f" [{datetime.now(beijing_tz).strftime('%H:%M:%S')}] 路径 {full_item_path} 日期解析异常: {e}（已跳过）")
             continue
 
         # 如果是目录 → 递归进入
         if item["type"] == "tree":
-            process_file_tree(repo, full_item_path)
+            process_file_tree(repo, full_item_path, branch)
 
         # 如果是文件 → 处理订阅文件
         elif item["type"] == "blob":
             fname = item_path.lower()
             if not fname.endswith((".yaml", ".yml", ".txt", ".json", ".base64", ".list", "readme.md")):
                 continue
-            if not any(k in fname for k in ["clash", "v2ray", "trojan", "hysteria", "hysteria2", "vless", "vmess", "ss", "ssr", "tuic", "reality", "sub", "proxy", "node", "base64", "config", "list", "readme"]):
+            if not any(k in fname for k in ["clash", "v2ray", "trojan", "hysteria", "hysteria2", "hy2", "vless", "vmess", "ss", "ssr", "tuic", "reality", "sub", "proxy", "node", "base64", "config", "list", "output", "readme"]):
                 continue
 
-            file_url = f"https://raw.githubusercontent.com/{repo}/main/{full_item_path}"
+            file_url = f"https://raw.githubusercontent.com/{repo}/{branch}/{full_item_path}"
 
 
             #print(f" 🔄 处理订阅文件: {file_url}")   # 显示完整 raw 链接
@@ -429,8 +472,9 @@ def process_file_tree(repo, path=""):
             if nodes:
 
 
+
                 # 只要提取到节点，就标记该仓库有效,就不用加入黑名单
-                repo_has_nodes = True
+                has_nodes[0] = True
                 # === 区分三种情况的核心逻辑 ===
                 before_count = len(unique_nodes)
                 #节点加入去重集合
@@ -438,6 +482,8 @@ def process_file_tree(repo, path=""):
                 added_count = len(unique_nodes) - before_count
                 # 情况1：提取出新增节点
                 if added_count > 0:
+
+
 
 
 
