@@ -73,6 +73,10 @@ QUERIES = [
     "节点订阅",
     "clash 订阅",
     "v2ray 订阅",
+    "科学上网",
+    "梯子",
+    "节点",
+    "代理",
 
     # ==================== 5. 混合 OR 组合（覆盖最广） ====================
 
@@ -155,6 +159,8 @@ else:
 # 作用4：连接池设置（pool_connections/pool_maxsize），适合并发请求场景
 session = requests.Session()
 
+
+
 # Retry 策略：最多重试2次，只对特定错误码重试
 retry_strategy = Retry(
     total=2,                    # 最多重试2次
@@ -174,6 +180,7 @@ session.mount("https://", adapter)
 session.mount("http://", adapter)
 
 # ====================== 安全请求函数（防止卡死 加强防挂起） ======================
+
 def safe_get(url, timeout=12, max_retries=2, operation_name="请求"):
 
     """
@@ -193,6 +200,7 @@ def safe_get(url, timeout=12, max_retries=2, operation_name="请求"):
 
             if resp.status_code == 404:
 
+
                 # 404 快速失败，不进行长时间等待
                 print(f"[{datetime.now(beijing_tz).strftime('%H:%M:%S')}] {operation_name} 返回 404（资源不存在，可能默认分支不是 main），快速跳过")
                 return None
@@ -201,6 +209,7 @@ def safe_get(url, timeout=12, max_retries=2, operation_name="请求"):
             
             if resp.status_code in (403, 409):
                 reset_time = resp.headers.get('X-RateLimit-Reset')
+
                 if reset_time:
                     wait_seconds = int(reset_time) - int(time.time()) + 10
                     print(f"[{datetime.now(beijing_tz).strftime('%H:%M:%S')}] ⚠️ {operation_name} 触发限流 | 等待 {wait_seconds} 秒...")
@@ -222,17 +231,10 @@ def safe_get(url, timeout=12, max_retries=2, operation_name="请求"):
             print(f"[{datetime.now(beijing_tz).strftime('%H:%M:%S')}] ⚠️ {operation_name} 连接错误 (尝试 {attempt}/{max_retries})")
         except Exception as e:
             print(f"[{datetime.now(beijing_tz).strftime('%H:%M:%S')}] ⚠️ {operation_name} 异常: {type(e).__name__}: {e} (尝试 {attempt}/{max_retries})")
-
-        
-        # 指数退避等待
-        wait = 5 * attempt
-        print(f"[{datetime.now(beijing_tz).strftime('%H:%M:%S')}]{operation_name} 等待 {wait} 秒后重试...")
-        time.sleep(wait)
-
-    
-    # 【只有全部重试都失败，才会走到这里】
+            time.sleep(5 * attempt)
     print(f"[{datetime.now(beijing_tz).strftime('%H:%M:%S')}] ❌ {operation_name} 多次失败，已跳过")
     return None
+
 
 
 # ====================== 增强版节点提取函数（大幅优化，支持更多风格） ======================
@@ -259,6 +261,7 @@ def extract_nodes_from_text(text):
     - JSON 格式的 proxies 数组和 outbounds
     - 嵌套在对象中的 proxies 列表
     - 标准协议链接 + base64 + YAML 单行/多行
+    - 支持 markdown 代码块中的 raw 链接
     """
     nodes = []
     if not text or len(text.strip()) < 10:
@@ -267,18 +270,25 @@ def extract_nodes_from_text(text):
     # 1. 提取标准协议链接（支持全协议 + URL 编码 + 复杂参数）
     # 使用非捕获组 (?:...) 确保 findall 返回完整链接，而不是只返回协议名
     protocol_pattern = r'(?i)(?:vmess|vless|trojan|ss|ssr|hysteria|hysteria2|hy2|tuic|reality)://[^\s<>"\']+'
+
     found = re.findall(protocol_pattern, text)
     nodes.extend(found)
 
+
     # 2. 特别处理 Shadowsocks ss:// 完整 base64 格式（包括带 # 备注和 plugin）
     ss_pattern = r'ss://[A-Za-z0-9+/=]+(?:\?[^\s<>"\']*)?(?:#[^\s<>"\']*)?'
+
     ss_matches = re.findall(ss_pattern, text, re.IGNORECASE)
     nodes.extend(ss_matches)
 
 
 
+
     # 3. 提取 Clash / Sing-box YAML 单行节点 - {name: ..., server: ..., type: ...}
     yaml_single_pattern = r'-\s*\{[^}]*?(?:name|server|port|type|uuid|password|ps|flow|reality-opts|sni|fp|client-fingerprint)[^}]*\}'
+
+
+
     yaml_matches = re.findall(yaml_single_pattern, text, re.IGNORECASE | re.DOTALL)
 
     for match in yaml_matches:
@@ -287,6 +297,11 @@ def extract_nodes_from_text(text):
             # 清理多余空格
             clean = re.sub(r'\s+', ' ', clean)
             nodes.append(clean)
+
+
+
+
+
 
     # 4. 提取 Clash(YAML) 多行 proxies 格式（从 name: 开始到下一个 name: 或结尾）
 
@@ -300,6 +315,7 @@ def extract_nodes_from_text(text):
             nodes.append(clean)
 
     # 5. JSON 格式 proxies / outbounds（支持所有协议）
+
     try:
         # 尝试解析整个文本为 JSON（有些文件是纯 JSON）
         data = json.loads(text)
@@ -308,12 +324,16 @@ def extract_nodes_from_text(text):
             if isinstance(proxies, list):
                 for p in proxies:
                     if isinstance(p, dict):
+
                         node_str = json.dumps(p, ensure_ascii=False)
                         nodes.append(node_str)
                     elif isinstance(p, str) and any(proto in p.lower() for proto in ["trojan://", "hysteria2://", "hy2://", "vmess://", "vless://", "ss://"]):
                         nodes.append(p)
     except:
         pass
+
+
+
 
     # 6. 匹配文本中出现的 proxies 数组（支持所有协议）
     proxies_array_pattern = r'"proxies"\s*:\s*\[([\s\S]*?)\]'
@@ -328,13 +348,26 @@ def extract_nodes_from_text(text):
 
 
 
+    """
     # 7. 提取 raw 订阅链接并加入处理队列
-    raw_link_pattern = r'https?://raw\.githubusercontent\.com/([^/\s]+/[^/\s]+)'
+    raw_link_pattern = r'https?://raw\.githubusercontent\.com/[^\s<>"\']+'
+
+
+
+
+
+
+
+
+
+
+
+
+
     raw_matches = re.findall(raw_link_pattern, text, re.IGNORECASE)
-    for repo_path in raw_matches:
-        repo_path = repo_path.strip()
-        if not repo_path or '/' not in repo_path:
-            continue
+    for link in raw_matches:
+        repo_path = link.split('githubusercontent.com/')[1].split('/')[0] + '/' + link.split('githubusercontent.com/')[1].split('/')[1]
+
         # 如果这个仓库还没有处理过并且没在黑名单，就当作正常发现的仓库处理
 
         if repo_path not in seen_repos and f"https://github.com/{repo_path}" not in blacklist_repos:
@@ -346,6 +379,8 @@ def extract_nodes_from_text(text):
             checked_count += 1
             # 走完整处理流程（commit时间 + 文件树）
             process_repo(repo_path)
+
+    """
 
     # 8. 加强 base64 解码（处理各种嵌套和复杂情况）
     base64_pattern = r'[A-Za-z0-9+/=]{60,}'
@@ -374,6 +409,7 @@ def extract_nodes_from_text(text):
                     nodes.append(line)
         except:
 
+
             # 尝试去掉前导 // 再解码一次
             try:
                 clean = b64.lstrip('/')
@@ -388,6 +424,8 @@ def extract_nodes_from_text(text):
             except:
                 pass
 
+
+
     # 最终清理：去重 + 过滤明显无效行
     cleaned_nodes = []
     seen = set()
@@ -400,6 +438,8 @@ def extract_nodes_from_text(text):
         seen.add(n)
         cleaned_nodes.append(n)
     return cleaned_nodes
+
+
 
 # ====================== 公共方法：处理单个仓库 ======================
 def process_repo(repo):
@@ -438,10 +478,13 @@ def process_file_tree(repo, path=""):
     这解决了原来对所有文件都查询 commit 的性能爆炸问题
     """
     # 用于标记该仓库是否提取到任何节点（用于 ljck.txt 黑名单）
-    repo_has_nodes = False
+    # 使用 list 作为 mutable 对象，在递归中共享标志（关键修复）
+    # 这样整个仓库（包括所有子目录）只会在最顶层调用结束时统一判断一次
+    has_nodes = [False]
 
     current_path = path or "（根目录）"
     print(f" [{datetime.now(beijing_tz).strftime('%H:%M:%S')}] 进入目录: {current_path} | 仓库: https://github.com/{repo}")
+
 
     tree_url = f"https://api.github.com/repos/{repo}/git/trees/main:{path}" if path else \
                f"https://api.github.com/repos/{repo}/git/trees/main"
@@ -502,6 +545,7 @@ def process_file_tree(repo, path=""):
 
 
             if nodes:
+
                 # 只要提取到节点，就标记该仓库有效,就不用加入黑名单
                 repo_has_nodes = True
                 # === 区分三种情况的核心逻辑 ===
@@ -511,6 +555,8 @@ def process_file_tree(repo, path=""):
                 added_count = len(unique_nodes) - before_count
                 # 情况1：提取出新增节点
                 if added_count > 0:
+
+
 
 
                     all_links.append(file_url)    #有新增节点, 把链接加入
@@ -526,13 +572,14 @@ def process_file_tree(repo, path=""):
                 # 情况3：没有提取出任何节点
                 print(f" 📄 文件 {file_url} ❌ 提取失败 | 没有提取到有效节点")
 
-    # 如果整个仓库一个节点都没提取到，就加入 ljck.txt 黑名单
-    if not repo_has_nodes:
+    # 【关键修复】只有整个仓库（包括所有子目录）都没有提取到节点，才加入ljck.txt 黑名单
+    if not has_nodes[0]:
         github_url = f"https://github.com/{repo}"
-        print(f" 仓库 {github_url} ❌ 提取失败 | 没有提取到有效节点 → 加入 ljck.txt 黑名单")
-        with open("ljck.txt", "a", encoding="utf-8") as f:
-            f.write(github_url + "\n")
-        blacklist_repos.add(github_url)
+        if github_url not in blacklist_repos:           # 防止重复写入
+            print(f" 仓库 {github_url} ❌ 提取失败 | 没有提取到有效节点 → 加入 ljck.txt 黑名单")
+            with open("ljck.txt", "a", encoding="utf-8") as f:
+                f.write(github_url + "\n")
+            blacklist_repos.add(github_url)
 
 
 
