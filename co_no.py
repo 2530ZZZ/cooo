@@ -526,7 +526,7 @@ def process_file_tree(repo, path=""):
     # 如果一个仓库完全没有提取到节点，就加入 ljck.txt 黑名单
     if resp_node_count = false:
         github_url = f"https://github.com/{repo}"
-        print(f" 📄 文件 {file_url} ❌ 提取失败 | 没有提取到有效节点 → 加入 ljck.txt 黑名单")
+        print(f" 仓库 {github_url} ❌ 提取失败 | 没有提取到有效节点 → 加入 ljck.txt 黑名单")
         with open("ljck.txt", "a", encoding="utf-8") as f:
             f.write(github_url + "\n")
         blacklist_repos.add(github_url)
