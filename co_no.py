@@ -119,15 +119,10 @@ QUERIES = [
 # ==================== 全局变量 ====================
 all_links = []                  # 最终收集到的所有订阅链接（no_li.txt）
 seen_repos = set()              # 已检查过的仓库（实现跳过重复仓库,防止重复处理）
+blacklist_repos = set()         # ljck.txt 黑名单仓库（持久化排除无用仓库）
 checked_count = 0               # 统计总共检查了多少个仓库
 unique_nodes = set()            # 全局去重集合（set自动去重,用于最终生成干净的 no.txt）
 query_links_count = 0           # 每关键词贡献的链接数（模块级全局）
-
-
-
-
-
-
 beijing_tz = timezone(timedelta(hours=8))  # 所有日志、打印、commit 消息都改成北京时间显示
 
 # ====================== 记录程序开始时间（用于计算总耗时） ======================
@@ -135,6 +130,9 @@ start_time = time.time()
 print(f"[{datetime.now(beijing_tz).strftime('%Y-%m-%d %H:%M:%S')}] 🚀 程序启动,开始动态搜索...")
 
 # ====================== 读取 ljck.txt 黑名单（持久化排除无用仓库） ======================
+# ljck.txt 作用：记录“完全没有提取到任何节点”的仓库
+# 第一次运行时文件不存在 → 自动创建空文件
+# 以后运行时自动加载，避免重复处理无用仓库，大幅节省时间和 API 调用
 ljck_file = "ljck.txt"
 if os.path.exists(ljck_file):
     with open(ljck_file, "r", encoding="utf-8") as f:
@@ -143,10 +141,18 @@ if os.path.exists(ljck_file):
             if line and line.startswith("https://github.com/"):
                 blacklist_repos.add(line)
     print(f"[{datetime.now(beijing_tz).strftime('%H:%M:%S')}] 已加载 ljck.txt，黑名单仓库数量: {len(blacklist_repos)}")
+else:
+    # 第一次运行，创建空文件
+    with open(ljck_file, "w", encoding="utf-8") as f:
+        pass
+    print(f"[{datetime.now(beijing_tz).strftime('%H:%M:%S')}] ljck.txt 不存在，已自动创建（首次运行）")
 
 # ====================== 创建带强力重试和超时的 Session ======================
 # 这段代码的作用是创建一个全局的 requests.Session() 对象
-# 作用：复用连接、自动重试、严格控制超时，防止程序卡死
+# 作用1：复用 TCP 连接，减少每次请求的握手开销
+# 作用2：自动重试（Retry），当 GitHub 返回 429/500 等临时错误时自动重试
+# 作用3：严格控制超时（timeout），防止某个请求永远卡住导致整个程序挂起
+# 作用4：连接池设置（pool_connections/pool_maxsize），适合并发请求场景
 session = requests.Session()
 
 # Retry 策略：最多重试2次，只对特定错误码重试
@@ -182,8 +188,6 @@ def safe_get(url, timeout=12, max_retries=2, operation_name="请求"):
             resp = session.get(url, headers=headers, timeout=timeout)
 
             if resp.status_code == 200:
-
-
                 # 成功立即返回
                 return resp
 
@@ -395,6 +399,7 @@ def process_repo(repo):
     """公共方法：处理单个仓库（检查更新时间 + 调用文件树处理）"""
     # 如果在 ljck.txt 黑名单中，直接跳过  是必要的,因为此函数可能被直接调用
     github_url = f"https://github.com/{repo}"
+
     if github_url in blacklist_repos:
         print(f" [{datetime.now(beijing_tz).strftime('%H:%M:%S')}] 仓库 {repo} 在 ljck.txt 黑名单中，已跳过")
         return
@@ -472,8 +477,6 @@ def process_file_tree(repo, path=""):
             file_url = f"https://raw.githubusercontent.com/{repo}/main/{full_item_path}"
 
 
-
-
             #print(f" 🔄 处理订阅文件: {file_url}")   # 显示完整 raw 链接
             
             # 直接请求一次文件内容，然后提取节点
@@ -509,8 +512,9 @@ def process_file_tree(repo, path=""):
                 else:
                     print(f" 📄 文件 {file_url} ⚪ 全部重复（不保留链接）")
             else:
+
                 # 情况3：没有提取出任何节点
-                # 【新增逻辑】如果一个仓库完全没有提取到节点，就加入 ljck.txt 黑名单
+                # 如果一个仓库完全没有提取到节点，就加入 ljck.txt 黑名单
                 github_url = f"https://github.com/{repo}"
                 print(f" 📄 文件 {file_url} ❌ 提取失败 | 没有提取到有效节点 → 加入 ljck.txt 黑名单")
                 with open("ljck.txt", "a", encoding="utf-8") as f:
@@ -521,11 +525,9 @@ def process_file_tree(repo, path=""):
 
 for query_idx, query in enumerate(QUERIES, 1):
     print(f"\n[{datetime.now(beijing_tz).strftime('%H:%M:%S')}] 🔎 开始搜索第 {query_idx}/{len(QUERIES)} 个关键词: {query}")
-
     # 每关键词重置关键词贡献的链接数量计数器
     query_links_count = 0
     page = 1
-
 
     # 不能超过 30 页，前面几页质量更好更高效
     while page <= 10:
