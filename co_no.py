@@ -239,6 +239,9 @@ def extract_nodes_from_text(text):
 
     """
     增强版节点提取函数 - 支持几乎所有协议和格式
+    重要改进：
+    - 使用非捕获组 + 更宽松的匹配规则，现在能完整提取你提供的 trojan://、hysteria2://、hy2://、ss://（带 plugin）等所有格式
+
 
     重要逻辑：
     - 直接从文件内容提取节点
@@ -258,17 +261,17 @@ def extract_nodes_from_text(text):
     if not text or len(text.strip()) < 10:
         return nodes
 
-
-    # 1. 提取标准协议链接（vmess://, vless://, trojan://, ss:// 等）
-    protocol_pattern = r'(vmess|vless|trojan|ss|ssr|hysteria|hysteria2|tuic|reality)://[^\s<>"\']{15,}'
-    found = re.findall(protocol_pattern, text, re.IGNORECASE)
+    # 1. 提取标准协议链接（支持全协议 + URL 编码 + 复杂参数）
+    # 使用非捕获组 (?:...) 确保 findall 返回完整链接，而不是只返回协议名
+    protocol_pattern = r'(?i)(?:vmess|vless|trojan|ss|ssr|hysteria|hysteria2|hy2|tuic|reality)://[^\s<>"\']+'
+    found = re.findall(protocol_pattern, text)
     nodes.extend(found)
 
-
-    # 2. 特别处理 Shadowsocks ss:// 完整 base64 格式（包括带 # 备注）
-    ss_pattern = r'ss://[A-Za-z0-9+/=]+(?:#[^\s<>"\']*)?'
+    # 2. 特别处理 Shadowsocks ss:// 完整 base64 格式（包括带 # 备注和 plugin）
+    ss_pattern = r'ss://[A-Za-z0-9+/=]+(?:\?[^\s<>"\']*)?(?:#[^\s<>"\']*)?'
     ss_matches = re.findall(ss_pattern, text, re.IGNORECASE)
     nodes.extend(ss_matches)
+
 
 
     # 3. 提取 Clash / Sing-box YAML 单行节点 - {name: ..., server: ..., type: ...}
@@ -283,6 +286,7 @@ def extract_nodes_from_text(text):
             nodes.append(clean)
 
     # 4. 提取 Clash(YAML) 多行 proxies 格式（从 name: 开始到下一个 name: 或结尾）
+
     yaml_multi_pattern = r'-\s*name:.*?(?=-\s*name:|\Z)'
     multi_matches = re.findall(yaml_multi_pattern, text, re.IGNORECASE | re.DOTALL | re.MULTILINE)
 
@@ -328,8 +332,8 @@ def extract_nodes_from_text(text):
         repo_path = repo_path.strip()
         if not repo_path or '/' not in repo_path:
             continue
-        # 如果这个仓库还没有处理过，就当作正常发现的仓库处理
-        if repo_path not in seen_repos:
+        # 如果这个仓库还没有处理过并且没在黑名单，就当作正常发现的仓库处理
+        if repo_path not in seen_repos and not in blacklist_repos:
             #print(f" 🔗 从文本中发现 raw 订阅链接 → https://github.com/{repo_path} ，将其仓库加入处理队列")
             # 防止重复处理
             seen_repos.add(repo_path)
@@ -399,7 +403,6 @@ def process_repo(repo):
     """公共方法：处理单个仓库（检查更新时间 + 调用文件树处理）"""
     # 如果在 ljck.txt 黑名单中，直接跳过  是必要的,因为此函数可能被直接调用
     github_url = f"https://github.com/{repo}"
-
     if github_url in blacklist_repos:
         print(f" [{datetime.now(beijing_tz).strftime('%H:%M:%S')}] 仓库 {repo} 在 ljck.txt 黑名单中，已跳过")
         return
@@ -430,8 +433,9 @@ def process_file_tree(repo, path=""):
     递归分层处理目录：只有上级目录新鲜，才继续检查子目录或文件
     这解决了原来对所有文件都查询 commit 的性能爆炸问题
     """
-    # 仓库是否提取节点
-    resp_node_count = false
+    # 用于标记该仓库是否提取到任何节点（用于 ljck.txt 黑名单）
+    repo_has_nodes = False
+
     current_path = path or "（根目录）"
     print(f" [{datetime.now(beijing_tz).strftime('%H:%M:%S')}] 进入目录: {current_path} | 仓库: https://github.com/{repo}")
 
@@ -441,7 +445,6 @@ def process_file_tree(repo, path=""):
     t_resp = safe_get(tree_url, timeout=25, operation_name=f"文件树 {current_path}")
     if t_resp is None or t_resp.status_code != 200:
         print(f" [{datetime.now(beijing_tz).strftime('%H:%M:%S')}] 文件树请求失败或超时: https://github.com/{repo}")
-
         return
 
     # 循环仓库文件树查询提取节点
@@ -495,8 +498,9 @@ def process_file_tree(repo, path=""):
 
 
             if nodes:
-                # 只要仓库有节点就不用加入黑名单
-                resp_node_count = true
+
+                # 只要提取到节点，就标记该仓库有效,就不用加入黑名单
+                repo_has_nodes = True
                 # === 区分三种情况的核心逻辑 ===
                 before_count = len(unique_nodes)
                 #节点加入去重集合
@@ -516,15 +520,11 @@ def process_file_tree(repo, path=""):
                 else:
                     print(f" 📄 文件 {file_url} ⚪ 全部重复（不保留链接）")
             else:
-
                 # 情况3：没有提取出任何节点
                 print(f" 📄 文件 {file_url} ❌ 提取失败 | 没有提取到有效节点")
 
-
-
-
-    # 如果一个仓库完全没有提取到节点，就加入 ljck.txt 黑名单
-    if resp_node_count = false:
+    # 如果整个仓库一个节点都没提取到，就加入 ljck.txt 黑名单
+    if not repo_has_nodes:
         github_url = f"https://github.com/{repo}"
         print(f" 仓库 {github_url} ❌ 提取失败 | 没有提取到有效节点 → 加入 ljck.txt 黑名单")
         with open("ljck.txt", "a", encoding="utf-8") as f:
