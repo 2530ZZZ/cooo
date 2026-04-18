@@ -1,4 +1,3 @@
-
 import requests
 import re
 import time
@@ -8,6 +7,7 @@ from datetime import datetime, timedelta, timezone
 import os
 import signal
 from functools import wraps
+from email.utils import parsedate_to_datetime
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
@@ -237,7 +237,8 @@ def timeout_decorator(seconds):
 def safe_get(url, timeout=(8, 15), max_retries=2, operation_name="请求"):
 
     """
-    【修改重点】
+
+
     1. timeout 改为元组 (连接超时, 读取超时)，避免 DNS/连接阶段永久卡死。
     2. 区分 403 和 409 错误：
        - 403 限流：根据 X-RateLimit-Reset 等待，但限制最大等待时间 120 秒。
@@ -337,6 +338,7 @@ def extract_nodes_from_text(text):
     - 各种 base64 编码的节点（自动解码 + 清理）
     - Clash / Sing-box 的 proxies 数组（JSON 或 YAML 格式）
     - JSON 格式的 proxies 数组和 outbounds
+
 
     - 嵌套在对象中的 proxies 列表
     - 标准协议链接 + base64 + YAML 单行/多行
@@ -476,7 +478,8 @@ def extract_nodes_from_text(text):
 
 
 # ====================== 公共方法：处理单个仓库（增加强制超时保护） ======================
-# 【新增】单个仓库处理总时间不得超过60秒，防止网络死锁
+
+# 单个仓库处理总时间不得超过60秒，防止网络死锁
 @timeout_decorator(60)
 def process_repo(repo):
 
@@ -511,7 +514,7 @@ def process_repo(repo):
     c_resp = safe_get(commit_url, timeout=(8, 15), operation_name=f"仓库 {repo} commit 查询")
     if c_resp is None or c_resp.status_code != 200:
         return
-    #有可能出现异常（API 有时返回的数据格式不标准、字段缺失、JSON 解析失败等）
+    # 有可能出现异常（API 有时返回的数据格式不标准、字段缺失、JSON 解析失败等）
     try:
         commit_time_str = c_resp.json()[0]["commit"]["committer"]["date"]
         commit_time = datetime.fromisoformat(commit_time_str.replace("Z", "+00:00"))
@@ -562,6 +565,7 @@ def process_file_tree(repo, path="", branch="main", has_nodes=None):
     dir_url = f"https://github.com/{repo}/tree/{branch}/{path}" if path else f"https://github.com/{repo}"
     print(f" [{datetime.now(beijing_tz).strftime('%H:%M:%S')}] 📁 进入目录: {current_path} -> {dir_url}", flush=True)
 
+    # 使用 Contents API 获取当前目录内容
     contents_url = f"https://api.github.com/repos/{repo}/contents/{path}" if path else f"https://api.github.com/repos/{repo}/contents"
     c_resp = safe_get(contents_url, timeout=(10, 20), operation_name=f"Contents API {current_path}")
     if c_resp is None or c_resp.status_code != 200:
@@ -573,18 +577,18 @@ def process_file_tree(repo, path="", branch="main", has_nodes=None):
 
     # 循环仓库文件树查询提取节点
     for item in items:
-        item_path = item["path"]
-        item_type = item["type"]          # "file" 或 "dir"
-        full_item_path = f"{path}/{item_path}" if path else item_path
+        item_path = item["path"]        # ✅ 关键修复：直接使用 API 返回的完整路径，不再手动拼接
+        item_type = item["type"]        # "file" 或 "dir"
 
         # 检查该路径的 commit 时间
         # ---------- 获取路径的最后修改时间（多层备选） ----------
         file_time = None
         time_source = None  # 记录时间来源，便于调试
 
+
         # 【主力方案】通过 commits API 获取
-        commit_url = f"https://api.github.com/repos/{repo}/commits?path={full_item_path}&per_page=1"
-        f_resp = safe_get(commit_url, timeout=(8, 12), operation_name=f"路径 {full_item_path} commit 查询")
+        commit_url = f"https://api.github.com/repos/{repo}/commits?path={item_path}&per_page=1"
+        f_resp = safe_get(commit_url, timeout=(8, 12), operation_name=f"路径 {item_path} commit 查询")
         if f_resp and f_resp.status_code == 200:
             try:
                 commits_data = f_resp.json()
@@ -592,58 +596,51 @@ def process_file_tree(repo, path="", branch="main", has_nodes=None):
                     file_time_str = commits_data[0]["commit"]["committer"]["date"]
                     file_time = datetime.fromisoformat(file_time_str.replace("Z", "+00:00"))
                     time_source = "commits API"
-                else:
-                    # 返回空数组，说明该路径无独立提交记录，进入备选方案
-                    pass
             except Exception as e:
                 print(f"   ⚠️ 解析 commits 响应失败: {e} 获取修改时间失败", flush=True)
 
         # 【第一备选】如果 commits API 返回空，且是文件，则用 HEAD 请求获取 Last-Modified
         if file_time is None and item_type == "file":
-            head_url = f"https://raw.githubusercontent.com/{repo}/{branch}/{full_item_path}"
-            head_resp = safe_get(head_url, timeout=(8, 10), operation_name=f"HEAD 请求 {full_item_path}", max_retries=1)
+            head_url = f"https://raw.githubusercontent.com/{repo}/{branch}/{item_path}"
+            head_resp = safe_get(head_url, timeout=(8, 10), operation_name=f"HEAD 请求 {item_path}", max_retries=1)
             if head_resp and head_resp.status_code == 200:
                 last_modified = head_resp.headers.get('Last-Modified')
                 if last_modified:
                     try:
-                        from email.utils import parsedate_to_datetime
                         file_time = parsedate_to_datetime(last_modified).replace(tzinfo=timezone.utc)
                         time_source = "Last-Modified header"
                     except Exception as e:
                         print(f"   ⚠️ 解析 Last-Modified 失败: {e} 获取修改时间失败", flush=True)
 
-        # 【第二备选】如果仍然为空，可选用 Contents API 的 git_url（代码略，按需开启）
-        # if file_time is None and item_type == "file":
-        #     # 通过 git_url 查询 blob 再获取 commit，略复杂，作为最终备选
-
         # 如果仍然无法获取时间，则对于目录继续递归，对于文件则跳过
         if file_time is None:
             if item_type == "dir":
                 # 目录没有时间也不影响，继续递归
-                print(f"   ➡️ 进入目录 {full_item_path}（未能获取修改时间，继续递归）", flush=True)
-                process_file_tree(repo, full_item_path, branch, has_nodes)
+                print(f"   ➡️ 进入目录 {item_path}（未能获取修改时间，继续递归）", flush=True)
+                process_file_tree(repo, item_path, branch, has_nodes)
             else:
-                print(f"   ⏭️ 跳过文件 {full_item_path}：无法获取修改时间", flush=True)
+                print(f"   ⏭️ 跳过文件 {item_path}：无法获取修改时间", flush=True)
             continue
 
         # 检查是否在24小时内
         if datetime.now(timezone.utc) - file_time >= timedelta(hours=24):
-            print(f"   ⏭️ 跳过 {full_item_path}：最后更新超过 24 小时（{file_time}，来源：{time_source}）", flush=True)
+            print(f"   ⏭️ 跳过 {item_path}：最后更新超过 24 小时（{file_time}，来源：{time_source}）", flush=True)
             # 如果是目录且超过24小时，则无需递归
             if item_type == "dir":
-                print(f"   🚫 目录 {full_item_path} 超过24小时未更新，跳过递归", flush=True)
+                print(f"   🚫 目录 {item_path} 超过24小时未更新，跳过递归", flush=True)
                 continue
             else:
                 continue
 
         # ---------- 时间在24小时内，继续处理 ----------
-        print(f"   ✅ {full_item_path} 在24小时内更新（{file_time}，来源：{time_source}）", flush=True)
+        print(f"   ✅ {item_path} 在24小时内更新（{file_time}，来源：{time_source}）", flush=True)
 
 
         # 如果是目录 → 递归进入
         if item_type == "dir":
+
             # 递归进入子目录，传递同一个 has_nodes 列表
-            process_file_tree(repo, full_item_path, branch, has_nodes)
+            process_file_tree(repo, item_path, branch, has_nodes)
 
         # 如果是文件 → 处理订阅文件
         elif item_type == "file":
@@ -658,7 +655,7 @@ def process_file_tree(repo, path="", branch="main", has_nodes=None):
                 continue
             """
 
-            file_url = f"https://raw.githubusercontent.com/{repo}/{branch}/{full_item_path}"
+            file_url = f"https://raw.githubusercontent.com/{repo}/{branch}/{item_path}"
             print(f"   🔍 检查文件: {file_url}", flush=True)
 
             # 直接请求一次文件内容，然后提取节点
@@ -702,7 +699,7 @@ def process_file_tree(repo, path="", branch="main", has_nodes=None):
                 print(f" 📄 文件 {file_url} ❌ 无有效节点", flush=True)
         else:
             # 以防出现其他类型（如 submodule）
-            print(f"   ⚠️ 未知条目类型: {item_type} - {full_item_path}", flush=True)
+            print(f"   ⚠️ 未知条目类型: {item_type} - {item_path}", flush=True)
 
 
 
