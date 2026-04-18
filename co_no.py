@@ -19,8 +19,6 @@ headers = {
 }
 
 # 关键词列表（可以继续添加或删除）
-
-
 QUERIES = [
     # ==================== 1. 基础高频 + 通用词 ====================
     "free nodes",
@@ -83,7 +81,6 @@ QUERIES = [
     "代理",
 
     # ==================== 5. 混合 OR 组合（覆盖最广） ====================
-
     "免费 (clash OR v2ray OR trojan OR hysteria OR hysteria2 OR tuic OR reality OR singbox) (订阅 OR 节点 OR 机场)",
     "clash (订阅 OR 配置 OR 节点 OR 免费) github",
     "v2ray (订阅 OR 配置 OR 节点) github",
@@ -112,7 +109,6 @@ QUERIES = [
     "free ssr nodes github",
 
     # ==================== 7. 额外高价值关键词 ====================
-
     "sub list github",
     "节点列表 github",
     "免费节点列表",
@@ -183,6 +179,9 @@ retry_strategy = Retry(
     total=2,                    # 最多重试2次
     backoff_factor=1,           # 每次重试间隔逐渐增加（1秒、2秒...）
     status_forcelist=[429, 500, 502, 503, 504],  # 这些状态码才触发重试
+
+
+
 )
 
 # HTTPAdapter：配置连接池和重试策略
@@ -190,6 +189,9 @@ adapter = HTTPAdapter(
     max_retries=retry_strategy,   # 使用上面的重试策略
     pool_connections=10,          # 最多同时保持10个连接
     pool_maxsize=10               # 连接池最大容量10
+
+
+
 )
 
 # 把适配器挂载到 https 和 http
@@ -271,6 +273,7 @@ def safe_get(url, timeout=(8, 15), max_retries=2, operation_name="请求"):
                 continue
 
             # 其他错误码（如 500, 502, 503）进行短暂重试
+
             wait = 3 + attempt * 2
             print(f"[{datetime.now(beijing_tz).strftime('%H:%M:%S')}] {operation_name} 返回状态码: {resp.status_code}，等待 {wait} 秒后重试...", flush=True)
             time.sleep(wait)
@@ -331,6 +334,7 @@ def extract_nodes_from_text(text):
     if not text or len(text.strip()) < 10:
         return nodes
 
+
     # ==================== 阶段1：提取 markdown 代码块并递归处理 ====================
     # 支持 ```xxx ... ``` 和 `xxx` 两种代码块
     # 使用 (?:```|`) 避免捕获组问题
@@ -343,6 +347,7 @@ def extract_nodes_from_text(text):
             nodes.extend(extract_nodes_from_text(block_content))
 
     # ==================== 阶段2：大段 base64 处理 ====================
+
     base64_full_pattern = r'[A-Za-z0-9+/=]{100,}'
     for candidate in re.findall(base64_full_pattern, text):
         try:
@@ -360,16 +365,19 @@ def extract_nodes_from_text(text):
 
 
 
+
     # ==================== 阶段3：标准协议链接（全协议支持） ====================
     # 使用非捕获组，确保返回完整链接
     protocol_pattern = r'(?i)(?:vmess|vless|trojan|ss|ssr|hysteria|hysteria2|hy2|tuic|reality)://[^\s<>"\']+'
     nodes.extend(re.findall(protocol_pattern, text))
 
 
+
     # ==================== 阶段4：Shadowsocks ss:// 带 plugin 格式 ====================
 
     ss_pattern = r'ss://[A-Za-z0-9+/=]+(?:\?[^\s<>"\']*)?(?:#[^\s<>"\']*)?'
     nodes.extend(re.findall(ss_pattern, text, re.IGNORECASE))
+
 
 
     # ==================== 阶段5：Clash / Sing-box YAML 单行节点 ====================
@@ -384,6 +392,7 @@ def extract_nodes_from_text(text):
             nodes.append(clean)
 
     # ==================== 阶段6：Clash YAML 多行 proxies ====================
+
     yaml_multi_pattern = r'-\s*name:.*?(?=-\s*name:|\Z)'
 
 
@@ -392,6 +401,7 @@ def extract_nodes_from_text(text):
         clean = re.sub(r'\s+', ' ', match.strip())
         if len(clean) > 30 and ('server:' in clean or 'type:' in clean):
             nodes.append(clean)
+
 
 
     # ==================== 阶段7：JSON 格式 proxies / outbounds ====================
@@ -410,10 +420,12 @@ def extract_nodes_from_text(text):
         pass
 
     # ==================== 阶段8：文本中 proxies 数组 ====================
+
     for arr in re.findall(r'"proxies"\s*:\s*\[([\s\S]*?)\]', text, re.IGNORECASE):
         for obj in re.findall(r'\{[\s\S]*?\}', arr):
             if any(proto in obj.lower() for proto in ["trojan", "hysteria2", "hy2", "vmess", "vless", "ss"]):
                 nodes.append(obj.strip())
+
 
 
     """
@@ -492,18 +504,29 @@ def process_repo(repo):
             return
 
         #print(f" ✓ 发现新的24h更新仓库 ({checked_count}): https://github.com/{repo}", flush=True)
-        # 调用文件树处理方法
-        process_file_tree(repo, path="", branch=default_branch)
+
+        # 调用文件树处理方法，传递 has_nodes 标志列表以便递归共享
+        has_nodes_flag = [False]
+        process_file_tree(repo, path="", branch=default_branch, has_nodes=has_nodes_flag)
+        # 如果整个仓库都没有提取到节点，则加入黑名单
+        if not has_nodes_flag[0]:
+            if github_url not in blacklist_repos:
+                print(f" 仓库 {github_url} ❌ 提取失败 | 没有提取到有效节点 → 加入 ljck.txt 黑名单", flush=True)
+                with open("ljck.txt", "a", encoding="utf-8") as f:
+                    f.write(github_url + "\n")
+                blacklist_repos.add(github_url)
     except Exception as e:
         print(f" 处理仓库 https://github.com/{repo} 时发生异常: {e}（已跳过）", flush=True)
 
 # ====================== 公共方法：处理文件树（核心逻辑） ======================
+def process_file_tree(repo, path="", branch="main", has_nodes=None):
 def process_file_tree(repo, path="", branch="main"):
 
 
     """
     公共方法：处理仓库的文件树，提取符合条件的订阅文件
     递归分层处理目录：只有上级目录新鲜，才继续检查子目录或文件
+    新增参数 has_nodes：列表，用于在递归中共享提取状态（已提取到节点则为 True）
     这解决了原来对所有文件都查询 commit 的性能爆炸问题
 
     【本次重大修改】
@@ -513,10 +536,14 @@ def process_file_tree(repo, path="", branch="main"):
     - 速度稍慢一点，但可靠性大幅提升，符合你当前的需求
     """
 
+
+
     # 用于标记该仓库是否提取到任何节点（用于 ljck.txt 黑名单）
     # 使用 list 作为 mutable 对象，在递归中共享标志（关键修复）
     # 这样整个仓库（包括所有子目录）只会在最顶层调用结束时统一判断一次
-    has_nodes = [False]
+
+    if has_nodes is None:
+        has_nodes = [False]  # 根调用时初始化
 
     current_path = path or "（根目录）"
     print(f" [{datetime.now(beijing_tz).strftime('%H:%M:%S')}] 进入目录: {current_path} | 仓库: https://github.com/{repo} | 分支: {branch}", flush=True)
@@ -551,20 +578,25 @@ def process_file_tree(repo, path="", branch="main"):
                 continue
 
 
+
         except Exception as e:
             #print(f" [{datetime.now(beijing_tz).strftime('%H:%M:%S')}] 路径 {full_item_path} 日期解析异常: {e}（已跳过）", flush=True)
             continue
 
         # 如果是目录 → 递归进入
         if item_type == "dir":
-            process_file_tree(repo, full_item_path, branch)
+            # 递归进入子目录，传递同一个 has_nodes 列表
+            process_file_tree(repo, full_item_path, branch, has_nodes)
 
         # 如果是文件 → 处理订阅文件
         elif item_type == "file":
             """
             fname = item_path.lower()
+
+
             if not fname.endswith((".yaml", ".yml", ".txt", ".json", ".base64", ".list", "readme.md")):
                 continue
+
             if not any(k in fname for k in ["clash", "v2ray", "trojan", "hysteria", "hysteria2", "hy2", "vless", "vmess", "ss", "ssr", "tuic", "reality", "sub", "proxy", "node", "base64", "config", "list", "output", "readme"]):
                 continue
             """
@@ -591,6 +623,7 @@ def process_file_tree(repo, path="", branch="main"):
 
 
 
+
                 # 只要提取到节点，就标记该仓库有效,就不用加入黑名单
                 has_nodes[0] = True
                 # === 区分三种情况的核心逻辑 ===
@@ -600,6 +633,7 @@ def process_file_tree(repo, path="", branch="main"):
                 added_count = len(unique_nodes) - before_count
                 # 情况1：提取出新增节点
                 if added_count > 0:
+
 
 
 
@@ -622,19 +656,6 @@ def process_file_tree(repo, path="", branch="main"):
 
                 # 情况3：没有提取出任何节点
                 print(f" 📄 文件 {file_url} ❌ 提取失败 | 没有提取到有效节点", flush=True)
-
-
-    # 【关键修复】只有整个仓库（包括所有子目录）都没有提取到节点，才加入ljck.txt 黑名单
-
-    if not has_nodes[0]:
-        github_url = f"https://github.com/{repo}"
-        if github_url not in blacklist_repos:           # 防止重复写入
-            print(f" 仓库 {github_url} ❌ 提取失败 | 没有提取到有效节点 → 加入 ljck.txt 黑名单", flush=True)
-
-
-            with open("ljck.txt", "a", encoding="utf-8") as f:
-                f.write(github_url + "\n")
-            blacklist_repos.add(github_url)
 
 
 
