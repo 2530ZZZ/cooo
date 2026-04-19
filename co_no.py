@@ -22,44 +22,6 @@ headers = {
 # 关键词列表（可以继续添加或删除）
 
 QUERIES = [
-    # ==================== 1. 基础高频 + 通用词 ====================
-    "free nodes",
-    "free proxy nodes",
-    "free v2ray nodes",
-    "free clash nodes",
-    "free trojan nodes",
-    "free hysteria nodes",
-    "free vless nodes",
-    "free hysteria2 nodes",
-    "free tuic nodes",
-    "free reality nodes",
-    "free singbox nodes",
-
-    # ==================== 2. 知名主流项目（高价值） ====================
-    "ACL4SSR",
-    "ACL4SSR ACL",
-    "subconverter",
-    "subconverter subscription",
-    "v2rayN",
-    "v2rayNG",
-    "Clash.Meta",
-    "mihomo",
-    "Clash for Windows",
-    "Hiddify",
-    "Shadowrocket",
-    "Quantumult X",
-    "Stash",
-    "sing-box subscription",
-
-    # ==================== 3. 订阅相关高频词 ====================
-    "clash subscription github",
-    "v2ray subscription github",
-    "trojan subscription github",
-    "hysteria2 subscription",
-    "singbox subscription",
-    "free subscription github",
-    "daily subscription",
-    "base64 subscription",
 
     # ==================== 4. 中文高频搜索词 ====================
     "免费节点",
@@ -82,44 +44,7 @@ QUERIES = [
     "节点",
     "代理",
 
-    # ==================== 5. 混合 OR 组合（覆盖最广） ====================
-    "免费 (clash OR v2ray OR trojan OR hysteria OR hysteria2 OR tuic OR reality OR singbox) (订阅 OR 节点 OR 机场)",
-    "clash (订阅 OR 配置 OR 节点 OR 免费) github",
-    "v2ray (订阅 OR 配置 OR 节点) github",
-    "trojan (订阅 OR 节点) github",
-    "hysteria2 (订阅 OR 节点) github",
 
-    # ==================== 6. 其他重要变体与收集器 ====================
-    "free proxy daily github",
-    "free nodes daily",
-    "proxy collector github",
-    "v2ray collector github",
-    "clash collector github",
-    "TelegramV2rayCollector",
-    "ProxyCollector",
-    "V2RAY-CLASH-BASE64-Subscription",
-    "V2RayRoot subscription",
-    "airport free nodes github",
-    "free airport nodes",
-    "free shadowrocket nodes",
-    "free hiddify nodes",
-    "free v2rayng nodes",
-    "free clash meta nodes",
-    "free mihomo nodes",
-    "free sing-box nodes github",
-    "free ss nodes github",
-    "free ssr nodes github",
-
-    # ==================== 7. 额外高价值关键词 ====================
-    "sub list github",
-    "节点列表 github",
-    "免费节点列表",
-    "clash yaml github",
-    "vless free nodes github",
-    "reality free nodes github",
-    "tuic free nodes github",
-    "subconverter list",
-    "ACL4SSR list"
 ]
 
 # ==================== 全局变量 ====================
