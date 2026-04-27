@@ -95,6 +95,46 @@ else:
 
 
 
+# ==================== 程序启动时加载仓库提交缓存 ====================
+CACHE_FILE = "repo_commit_cache.txt"
+
+def load_commit_cache():
+    """
+    从 repo_commit_cache.txt 加载已处理仓库的 commit SHA 记录。
+    返回一个字典：{ "https://github.com/user/repo": "commit_sha" }
+    """
+    cache = {}
+    if os.path.exists(CACHE_FILE):
+        with open(CACHE_FILE, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                parts = line.split()
+                if len(parts) >= 2:
+                    repo_url = parts[0]
+                    commit_sha = parts[1]
+                    # 确保是完整的 GitHub URL
+                    if repo_url.startswith("https://github.com/"):
+                        cache[repo_url] = commit_sha
+    return cache
+
+def save_commit_cache(cache):
+    """
+    将已处理仓库的 commit SHA 记录保存到 repo_commit_cache.txt。
+    每行格式：仓库完整URL 空格 commit_SHA
+    """
+    with open(CACHE_FILE, "w", encoding="utf-8") as f:
+        for repo_url, sha in cache.items():
+            f.write(f"{repo_url} {sha}\n")
+
+# 加载缓存
+commit_cache = load_commit_cache()
+print(f"[{datetime.now(beijing_tz).strftime('%H:%M:%S')}] 已加载仓库提交缓存，共 {len(commit_cache)} 条记录", flush=True)
+
+
+
+
 # ====================== 创建带强力重试和超时的 Session ======================
 # 这段代码的作用是创建一个全局的 requests.Session() 对象
 # 作用1：复用 TCP 连接，减少每次请求的握手开销
@@ -103,20 +143,11 @@ else:
 # 作用4：连接池设置（pool_connections/pool_maxsize），适合并发请求场景
 session = requests.Session()
 
-
-
-
-
-
-
 # Retry 策略：最多重试2次，只对特定错误码重试
 retry_strategy = Retry(
     total=2,                    # 最多重试2次
     backoff_factor=1,           # 每次重试间隔逐渐增加（1秒、2秒...）
     status_forcelist=[429, 500, 502, 503, 504],  # 这些状态码才触发重试
-
-
-
 )
 
 # HTTPAdapter：配置连接池和重试策略
@@ -124,9 +155,6 @@ adapter = HTTPAdapter(
     max_retries=retry_strategy,   # 使用上面的重试策略
     pool_connections=10,          # 最多同时保持10个连接
     pool_maxsize=10               # 连接池最大容量10
-
-
-
 )
 
 # 把适配器挂载到 https 和 http
@@ -195,8 +223,6 @@ def safe_get(url, timeout=(8, 15), max_retries=2, operation_name="请求"):
             if resp.status_code == 403:
                 reset_time = resp.headers.get('X-RateLimit-Reset')
 
-
-
                 if reset_time:
                     wait_seconds = int(reset_time) - int(time.time()) + 5
                     # 限制最大等待 120 秒，避免超长阻塞
@@ -214,7 +240,6 @@ def safe_get(url, timeout=(8, 15), max_retries=2, operation_name="请求"):
             wait = 3 + attempt * 2
             print(f"[{datetime.now(beijing_tz).strftime('%H:%M:%S')}] {operation_name} 返回状态码: {resp.status_code if resp.status_code else '未知'}，等待 {wait} 秒后重试...", flush=True)
             time.sleep(wait)
-
 
         except requests.exceptions.Timeout:
             print(f"[{datetime.now(beijing_tz).strftime('%H:%M:%S')}] ⚠️ {operation_name} 超时 (尝试 {attempt}/{max_retries})", flush=True)
@@ -236,20 +261,10 @@ def extract_nodes_from_text(text):
     """
     增强版节点提取函数 - 支持几乎所有协议和格式
     重要改进：
-
-
-
-
     - 优先处理大段 base64（很多订阅文件是整行 base64 编码）
     - 支持 trojan://、hysteria2://、hy2://、ss:// 等带复杂参数、plugin 的格式
     - 支持 markdown 代码块提取（``` 或 ` 包裹的内容）
-
-
-
-
     - 多阶段提取：base64 → 协议链接 → YAML/JSON → 清理
-
-
     - 使用非捕获组 + 更宽松的匹配规则，现在能完整提取你提供的 trojan://、hysteria2://、hy2://、ss://（带 plugin）等所有格式
 
     重要逻辑：
@@ -263,8 +278,6 @@ def extract_nodes_from_text(text):
     - 各种 base64 编码的节点（自动解码 + 清理）
     - Clash / Sing-box 的 proxies 数组（JSON 或 YAML 格式）
     - JSON 格式的 proxies 数组和 outbounds
-
-
     - 嵌套在对象中的 proxies 列表
     - 标准协议链接 + base64 + YAML 单行/多行
     - 支持 markdown 代码块中的 raw 链接
@@ -301,8 +314,6 @@ def extract_nodes_from_text(text):
             nodes.extend(extract_nodes_from_text(decoded))
         except:
             pass
-
-
 
 
     # ==================== 阶段3：标准协议链接（全协议支持） ====================
@@ -402,6 +413,8 @@ def extract_nodes_from_text(text):
 
 
 
+
+
 # ====================== 公共方法：处理单个仓库（增加强制超时保护） ======================
 
 # 单个仓库处理总时间不得超过60秒，防止网络死锁
@@ -416,6 +429,7 @@ def process_repo(repo):
         return
 
     # 获取仓库默认分支（解决 main/master 不一致问题）
+
     repo_info_url = f"https://api.github.com/repos/{repo}"
     repo_resp = safe_get(repo_info_url, timeout=(8, 15), operation_name=f"仓库 {repo} 信息查询")
     if repo_resp is None or repo_resp.status_code != 200:
@@ -441,9 +455,16 @@ def process_repo(repo):
         return
     # 有可能出现异常（API 有时返回的数据格式不标准、字段缺失、JSON 解析失败等）
     try:
-        commit_time_str = c_resp.json()[0]["commit"]["committer"]["date"]
+        commit_data = c_resp.json()[0]
+        commit_sha = commit_data["sha"]
+        commit_time_str = commit_data["commit"]["committer"]["date"]
         commit_time = datetime.fromisoformat(commit_time_str.replace("Z", "+00:00"))
         if datetime.now(timezone.utc) - commit_time >= timedelta(hours=24):
+            return
+
+        # ---------- 利用缓存跳过无新提交的仓库 ----------
+        if github_url in commit_cache and commit_cache[github_url] == commit_sha:
+            print(f" [{datetime.now(beijing_tz).strftime('%H:%M:%S')}] 仓库 {repo} 已处理过且无新提交，跳过", flush=True)
             return
 
         #print(f" ✓ 发现新的24h更新仓库 ({checked_count}): https://github.com/{repo}", flush=True)
@@ -496,6 +517,10 @@ def process_file_tree(repo, path="", branch="main", has_nodes=None):
     if c_resp is None or c_resp.status_code != 200:
         print(f" [{datetime.now(beijing_tz).strftime('%H:%M:%S')}] Contents API 请求失败或超时: {contents_url}", flush=True)
         return
+
+
+
+
 
     items = c_resp.json()
     print(f" [{datetime.now(beijing_tz).strftime('%H:%M:%S')}] Contents API 加载成功，共 {len(items)} 个条目", flush=True)
@@ -694,7 +719,6 @@ if unique_nodes:
 else:
     print(f"\n[{datetime.now(beijing_tz).strftime('%H:%M:%S')}] ⚠️ 未提取到任何有效节点", flush=True)
 
-
 # 生成 no.txt 的 raw 链接并加入到 no_li.txt
 repo_name = os.getenv("GITHUB_REPOSITORY", "2530ZZZ/cooo")
 no_txt_raw_url = f"https://raw.githubusercontent.com/{repo_name}/main/no.txt"
@@ -705,6 +729,10 @@ all_links = list(dict.fromkeys(all_links))
 
 with open("no_li.txt", "w", encoding="utf-8") as f:
     f.write("\n".join(all_links))
+
+# 持久化提交缓存
+save_commit_cache(commit_cache)
+
 
 
 # ====================== 日志信息处理 ======================
