@@ -80,6 +80,8 @@ jobs:
           # 添加文件（同时提交 no_li.txt 和 no.txt 和 alive.txt 和 fi_no.txt）
           git add no_li.txt
           git add no.txt
+          git add ljck.txt
+          git add repo_commit_cache.txt
 
 
           # 提交（如果文件没有变化则不提交）
