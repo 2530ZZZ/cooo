@@ -42,7 +42,7 @@ QUERIES = [
     "free proxy yaml",
     "free proxy json",
     "free proxy base64",
-
+'''
     # ==================== 2. 知名主流项目（高价值） ====================
     "ACL4SSR",
     "ACL4SSR ACL",
@@ -162,7 +162,7 @@ QUERIES = [
     "免费节点汇总",
     "节点列表",
 
-    '''
+
     # ==================== 5. 混合 OR 组合（覆盖最广） ====================
     "免费 (clash OR v2ray OR trojan OR hysteria OR hysteria2 OR tuic OR reality OR singbox OR shadowsocks OR wireguard) (订阅 OR 节点 OR 机场 OR 配置 OR 列表 OR 收集 OR 更新 OR 每日)",
     "clash (订阅 OR 配置 OR 节点 OR 免费 OR 分享 OR 更新) github",
