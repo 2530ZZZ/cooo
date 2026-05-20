@@ -6,6 +6,7 @@ import json
 from datetime import datetime, timedelta, timezone
 import os
 import signal
+import shutil                          # ✅ 新增：用于清空 no 文件夹
 from functools import wraps
 from email.utils import parsedate_to_datetime
 from requests.adapters import HTTPAdapter
@@ -42,7 +43,7 @@ QUERIES = [
     "free proxy yaml",
     "free proxy json",
     "free proxy base64",
-'''
+
     # ==================== 2. 知名主流项目（高价值） ====================
     "ACL4SSR",
     "ACL4SSR ACL",
@@ -509,7 +510,7 @@ QUERIES = [
     "电报 wireguard",
     "电报 科学上网",
     "电报 翻墙",
-    '''
+    
 ]
 
 # ==================== 全局变量 ====================
@@ -1184,9 +1185,46 @@ if unique_nodes:
 else:
     print(f"\n[{datetime.now(beijing_tz).strftime('%H:%M:%S')}] ⚠️ 未提取到任何有效节点", flush=True)
 
-# 生成 no.txt 的 raw 链接并加入到 no_li.txt
-repo_name = os.getenv("GITHUB_REPOSITORY", "2530ZZZ/cooo")
-no_txt_raw_url = f"https://raw.githubusercontent.com/{repo_name}/main/no.txt"
+
+# ====================== 新增：分片写入 no 文件夹并生成 no_w_li.txt ======================
+
+# 清空并重建 no 文件夹
+no_dir = "no"
+if os.path.exists(no_dir):
+    shutil.rmtree(no_dir)          # 彻底删除旧文件夹
+os.makedirs(no_dir, exist_ok=True) # 重新创建空文件夹
+
+# 分片参数
+chunk_size = 10000
+nodes_list = list(unique_nodes)    # 转为有序列表
+total_nodes = len(nodes_list)
+file_count = 0
+no_w_links = []                    # 存放所有分片文件的 raw 链接
+
+repo_name = os.getenv("GITHUB_REPOSITORY", "2530ZZZ/cooo")       # 仓库全名 owner/repo
+branch_name = os.getenv("GITHUB_REF_NAME", "main")                # 当前分支（默认 main）
+
+for i in range(0, total_nodes, chunk_size):
+    chunk = nodes_list[i:i+chunk_size]
+    file_count += 1
+    filename = f"{file_count}.txt"
+    filepath = os.path.join(no_dir, filename)
+    with open(filepath, "w", encoding="utf-8") as f:
+        f.write("\n".join(chunk))
+    # 生成 raw 链接
+    raw_url = f"https://raw.githubusercontent.com/{repo_name}/{branch_name}/no/{filename}"
+    no_w_links.append(raw_url)
+
+# 写入 no_w_li.txt（每次覆盖，实现清空）
+with open("no_w_li.txt", "w", encoding="utf-8") as f:
+    f.write("\n".join(no_w_links))
+
+print(f"[{datetime.now(beijing_tz).strftime('%H:%M:%S')}] ✅ 已将 {total_nodes} 条节点分为 {file_count} 个文件存入 no/ 文件夹", flush=True)
+print(f"[{datetime.now(beijing_tz).strftime('%H:%M:%S')}] ✅ 已生成 no_w_li.txt，包含 {file_count} 条分片链接", flush=True)
+
+
+# ====================== 原有：生成 no_li.txt 并加入 no.txt 的 raw 链接 ======================
+no_txt_raw_url = f"https://raw.githubusercontent.com/{repo_name}/{branch_name}/no.txt"
 all_links.append(no_txt_raw_url)
 
 # 全局去重常规链接
