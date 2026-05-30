@@ -77,7 +77,7 @@ jobs:
 
           # 添加文件（同时提交 no_li.txt 和 no.txt 和 ljck.txt 和 repo_commit_cache.txt 以及 no/ 和 no_w_li.txt）
           git add no_li.txt
-          git add no.txt
+          # git add no.txt
           git add ljck.txt
           git add repo_commit_cache.txt
           git add no/
